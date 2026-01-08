@@ -16,5 +16,9 @@
   "bugs": {
     "url": "https://github.com/RonaldoFreire2001/app-domino/issues"
   },
-  "homepage": "https://github.com/RonaldoFreire2001/app-domino#readme"
+  "homepage": "https://github.com/RonaldoFreire2001/app-domino#readme",
+  "dependencies": {
+    "express": "^5.2.1",
+    "nodemon": "^3.1.11"
+  }
 }
