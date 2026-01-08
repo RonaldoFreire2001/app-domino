@@ -1,0 +1,20 @@
+{
+  "name": "app-domino",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RonaldoFreire2001/app-domino.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/RonaldoFreire2001/app-domino/issues"
+  },
+  "homepage": "https://github.com/RonaldoFreire2001/app-domino#readme"
+}
