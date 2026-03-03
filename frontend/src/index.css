@@ -1,0 +1,56 @@
+:root {
+  --mesa-verde: #1b5e20; /* Verde escuro de mesa de jogos */
+  --pedra-cor: #f5f5f0; /* Cor de osso/marfim */
+  --detalhe-preto: #212121;
+  --ouro: #ffd700;
+}
+
+body {
+  margin: 0;
+  background-color: var(--mesa-verde);
+  color: white;
+  font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background-image: radial-gradient(circle, #2e7d32 0%, #1b5e20 100%);
+  min-height: 100vh;
+}
+
+.container {
+  padding: 15px;
+  max-width: 500px; /* Estreito para parecer um app de celular */
+  margin: 0 auto;
+}
+
+/* Estilo das "Pedras" (Cards) */
+.card-domino {
+  background-color: var(--pedra-cor);
+  color: var(--detalhe-preto);
+  border-radius: 12px;
+  padding: 15px;
+  box-shadow: 0 8px 0 #d4d4ca, 0 10px 20px rgba(0,0,0,0.4);
+  margin-bottom: 20px;
+  border: 1px solid #e0e0d5;
+}
+
+h1 {
+  font-size: 1.8rem;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+  margin-bottom: 30px;
+}
+
+button {
+  border-radius: 8px;
+  font-weight: bold;
+  text-transform: uppercase;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+button:active {
+  transform: translateY(3px);
+}
+
+input, select {
+  border-radius: 8px;
+  border: 2px solid #ccc;
+  outline: none;
+}
