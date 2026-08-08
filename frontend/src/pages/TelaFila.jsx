@@ -111,7 +111,7 @@ const BannerApp = () => {
   return (
     <div style={{ backgroundColor: '#0F172A', color: '#FFFFFF', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1E293B', boxSizing: 'border-box' }}>
       <div style={{ display: 'flex', flexDirection: 'column' }}>
-        <span style={{ fontSize: '0.8rem', fontWeight: '800' }}>Dominador PAF1</span>
+        <span style={{ fontSize: '0.8rem', fontWeight: '800' }}>Dominó do PAF1</span>
         <span style={{ fontSize: '0.65rem', color: '#94A3B8' }}>Instale o app oficial no seu Android</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
