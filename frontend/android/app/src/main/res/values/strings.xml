@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Dominó do PAF1</string>
+    <string name="title_activity_main">Dominó do PAF1</string>
+    <string name="package_name">com.dominopaf1.app</string>
+    <string name="custom_url_scheme">com.dominopaf1.app</string>
+</resources>

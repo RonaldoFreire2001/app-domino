@@ -1,0 +1,19 @@
+# Variáveis de Ambiente
+.env
+.env.*
+.env.local
+.env.development
+.env.production
+
+# Node Modules e Build
+node_modules/
+dist/
+build/
+
+# Logs e Sistema Operacional I
+logs
+*.log
+.DS_Store
+
+firebase-chave.json
+google-services.json

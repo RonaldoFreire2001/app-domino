@@ -1,0 +1,6 @@
+{
+  "appId": "com.dominopaf1.app",
+  "appName": "Dominó do PAF1",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}

@@ -1,0 +1,13 @@
+{
+  "appId": "com.dominopaf1.app",
+  "appName": "Dominó do PAF1",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "plugins": {
+    "Keyboard": {
+      "resize": "body",
+      "style": "dark",
+      "resizeOnFullScreen": true
+    }
+  }
+}

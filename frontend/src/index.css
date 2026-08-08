@@ -1,0 +1,51 @@
+/* RESET PROFISSIONAL DO APLICATIVO */
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent; /* Remove aquele brilho azul feio ao clicar no celular */
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100vh;
+  background-color: #F9FAFB; /* Fundo claro e elegante */
+  color: #0F172A; /* Texto Azul Marinho */
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* Esconde a barra de rolagem para dar cara de app nativo */
+::-webkit-scrollbar {
+  width: 0px;
+  background: transparent;
+}
+
+/* Forçar notificações à frente de absolutamente qualquer janela no app */
+:root {
+    --toastify-z-index: 2147483647;
+}
+.Toastify__toast-container, 
+[data-testid="toaster"],
+.go3958317564 {
+    z-index: 2147483647 !important;
+}
+/* PWA Edge-to-Edge - Fusão de Cores Absoluta */
+html, body {
+  margin: 0;
+  padding: 0;
+  background-color: #F9FAFB !important; /* 🔥 Garante a cor de fundo em toda a janela do sistema */
+}
+
+#root {
+  background-color: #F9FAFB !important;
+  min-height: 100vh;
+  
+  /* Mantém os elementos do seu app protegidos dentro da área visível */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}

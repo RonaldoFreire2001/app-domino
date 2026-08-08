@@ -1,0 +1,41 @@
+{
+  "name": "app-domino",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RonaldoFreire2001/app-domino.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/RonaldoFreire2001/app-domino/issues"
+  },
+  "homepage": "https://github.com/RonaldoFreire2001/app-domino#readme",
+  "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.4.2",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/push-notifications": "^8.1.2",
+    "@supabase-js/source": "github:supabase/supabase-js",
+    "@supabase/supabase-js": "^2.97.0",
+    "compression": "^1.8.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.3.1",
+    "firebase-admin": "^14.2.0",
+    "lucide-react": "^1.27.0",
+    "node-cron": "^4.2.1",
+    "nodemon": "^3.1.11",
+    "react-hot-toast": "^2.6.0",
+    "react-router-dom": "^7.18.1",
+    "web-push": "^3.6.7"
+  }
+}
