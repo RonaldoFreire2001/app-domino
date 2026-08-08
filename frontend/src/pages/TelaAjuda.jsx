@@ -202,7 +202,20 @@ export default function TelaAjuda() {
 
       <div style={{ textAlign: 'center', marginTop: '50px' }}>
         <p style={{ margin: '0 0 25px 0', color: '#64748B', fontSize: '0.85rem', fontStyle: 'italic', fontWeight: '600' }}>"A resenha é livre, o respeito é obrigatório."</p>
-        <div style={{ display: 'flex', justifyContent: 'center' }}><BotaoSAC /></div>
+        
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', flexWrap: 'wrap' }}>
+          <a 
+            href={import.meta.env.VITE_URL_APK || '#'} 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#0F172A', color: '#FFFFFF', padding: '12px 20px', borderRadius: '12px', fontWeight: '700', fontSize: '0.85rem', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Baixar para Android
+          </a>
+
+          <BotaoSAC />
+        </div>
       </div>
     </div>
   );

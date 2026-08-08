@@ -95,6 +95,36 @@ const DestaqueTop1 = ({ config }) => {
     </div>
   );
 };
+const BannerApp = () => {
+  const [mostrar, setMostrar] = useState(false);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) {
+      setMostrar(true);
+    }
+  }, []);
+
+  if (!mostrar) return null;
+
+  const urlDoApk = import.meta.env.VITE_URL_APK || '#';
+
+  return (
+    <div style={{ backgroundColor: '#0F172A', color: '#FFFFFF', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1E293B', boxSizing: 'border-box' }}>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <span style={{ fontSize: '0.8rem', fontWeight: '800' }}>Dominador PAF1</span>
+        <span style={{ fontSize: '0.65rem', color: '#94A3B8' }}>Instale o app oficial no seu Android</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <a href={urlDoApk} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', backgroundColor: '#991B1B', color: '#FFFFFF', padding: '6px 14px', borderRadius: '20px', fontSize: '0.7rem', fontWeight: '700' }}>
+          BAIXAR APP
+        </a>
+        <button onClick={() => setMostrar(false)} style={{ background: 'transparent', border: 'none', color: '#64748B', fontSize: '1.1rem', cursor: 'pointer', padding: 0 }}>
+          ×
+        </button>
+      </div>
+    </div>
+  );
+};
 
 export default function TelaFila() {
   const [usuarioLogado, setUsuarioLogado] = useState(null);
@@ -786,7 +816,7 @@ export default function TelaFila() {
           background: modoDeus ? 'linear-gradient(135deg, #FFFFFF 0%, #FAFAFA 40%, #FFF5D1 100%)' : '#F9FAFB', 
           color: '#0F172A', minHeight: '100vh', boxSizing: 'border-box', transition: 'background 0.5s ease'
         }}>
-          
+          <BannerApp />
           <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', paddingBottom: '15px', borderBottom: '1px solid #E5E7EB' }}>
             <h1 onDoubleClick={ativarModoDeus} style={{ color: modoDeus ? '#92400E' : '#0F172A', fontSize: '1.2rem', fontWeight: '900', margin: 0, cursor: 'pointer', letterSpacing: '-0.5px', transition: 'color 0.3s' }}>
               Dominó do PAF1
