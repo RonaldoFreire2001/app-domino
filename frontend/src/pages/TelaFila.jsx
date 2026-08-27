@@ -950,8 +950,8 @@ export default function TelaFila() {
               <h3 style={{ color: '#0F172A', margin: 0, fontSize: '1rem', fontWeight: '700' }}>Fila de Espera <span style={{ color: '#64748B', fontWeight: '500', fontSize: '0.9rem' }}>({espera.length})</span></h3>
 
               {modoDeus && (
-                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <div style={{ position: 'relative' }}>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', width: '100%' }}>
+                  <div style={{ position: 'relative', flex: '1 1 130px' }}>
                     <input 
                       type="text" 
                       placeholder="Puxar jogador..." 
@@ -959,10 +959,10 @@ export default function TelaFila() {
                       onChange={(e) => { setBuscaForcar(e.target.value); setMostrarListaForcar(true); setJogadorParaForcar(''); }} 
                       onFocus={() => setMostrarListaForcar(true)} 
                       onBlur={() => setTimeout(() => setMostrarListaForcar(false), 200)} 
-                      style={{ padding: '8px 10px', borderRadius: '6px', backgroundColor: '#FFFFFF', color: '#0F172A', border: '1px solid #E2E8F0', width: '130px', outline: 'none', fontSize: '0.75rem', fontWeight: '600' }} 
+                      style={{ padding: '8px 10px', borderRadius: '6px', backgroundColor: '#FFFFFF', color: '#0F172A', border: '1px solid #E2E8F0', width: '100%', boxSizing: 'border-box', outline: 'none', fontSize: '0.75rem', fontWeight: '600' }} 
                     />
                     {mostrarListaForcar && buscaForcar.trim() !== '' && (
-                      <div style={{ position: 'absolute', top: '100%', right: 0, width: '200px', maxHeight: '150px', overflowY: 'auto', backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', zIndex: 10, marginTop: '4px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
+                      <div style={{ position: 'absolute', top: '100%', right: 0, width: '100%', minWidth: '200px', maxHeight: '150px', overflowY: 'auto', backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', zIndex: 10, marginTop: '4px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
                         {usuariosCadastrados.filter(u => u.nome.toLowerCase().includes(buscaForcar.toLowerCase())).map(u => (
                           <div key={u.id} onClick={() => { setJogadorParaForcar(u.id); setBuscaForcar(u.nome); setMostrarListaForcar(false); vibrarLeve(); }} style={{ padding: '10px 12px', borderBottom: '1px solid #F1F5F9', cursor: 'pointer', fontSize: '0.8rem', color: '#334155', fontWeight: '600' }}>
                             {u.nome}
@@ -990,7 +990,6 @@ export default function TelaFila() {
                 </div>
               )}
             </div>
-
             {carregandoDados ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <SkeletonCard />
