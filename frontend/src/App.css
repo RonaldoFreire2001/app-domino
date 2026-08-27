@@ -1,0 +1,20 @@
+/* =========================================
+   MODO ESCURO - MÁGICA DE INVERSÃO
+   ========================================= */
+body.tema-escuro {
+  background-color: #111111 !important;
+  filter: invert(0.93) hue-rotate(180deg);
+}
+
+body.tema-escuro img, 
+body.tema-escuro iframe, 
+body.tema-escuro svg {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+html {
+  background-color: #F9FAFB;
+}
+body.tema-escuro html {
+  background-color: #111111;
+}

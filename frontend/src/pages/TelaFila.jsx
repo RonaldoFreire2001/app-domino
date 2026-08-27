@@ -160,6 +160,18 @@ export default function TelaFila() {
   const [jogadorParaForcar, setJogadorParaForcar] = useState('');
   
   const [buscaForcar, setBuscaForcar] = useState('');
+  const [modoEscuro, setModoEscuro] = useState(() => {
+    return localStorage.getItem('@DominoPAF:tema') === 'escuro';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('@DominoPAF:tema', modoEscuro ? 'escuro' : 'claro');
+    if (modoEscuro) {
+      document.body.classList.add('tema-escuro');
+    } else {
+      document.body.classList.remove('tema-escuro');
+    }
+  }, [modoEscuro]);
   const [mostrarListaForcar, setMostrarListaForcar] = useState(false);
   const [configApp, setConfigApp] = useState(null);
   const [modalConfigAberto, setModalConfigAberto] = useState(false);
@@ -532,7 +544,18 @@ export default function TelaFila() {
             </motion.div>
           </div>
         )}
-        <header style={{ textAlign: 'center', marginBottom: '40px' }}>
+        <header style={{ position: 'relative', textAlign: 'center', marginBottom: '40px' }}>
+          {/* BOTÃO DO MODO ESCURO NA TELA DE LOGIN */}
+          <div style={{ position: 'absolute', top: 0, right: 0 }}>
+            <motion.button 
+              whileTap={{ scale: 0.85 }}
+              onClick={() => { setModoEscuro(!modoEscuro); vibrarLeve(); }} 
+              style={{ background: '#F1F5F9', border: '1px solid #E2E8F0', borderRadius: '50%', width: '34px', height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', cursor: 'pointer', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}
+            >
+              {modoEscuro ? '☀️' : '🌙'}
+            </motion.button>
+          </div>
+          
           <h1 style={{ color: '#0F172A', fontSize: '2rem', fontWeight: '800', margin: '0 0 8px 0', letterSpacing: '-0.5px' }}>Dominó do PAF1</h1>
           <p style={{ color: '#64748B', margin: 0, fontSize: '0.9rem' }}>Acesso ao Sistema Acadêmico</p>
         </header>
