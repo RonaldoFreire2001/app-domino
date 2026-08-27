@@ -845,6 +845,16 @@ export default function TelaFila() {
               Dominó do PAF1
             </h1>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              
+              {/* BOTÃO DO MODO ESCURO NA TELA PRINCIPAL */}
+              <motion.button 
+                whileTap={{ scale: 0.85 }}
+                onClick={() => { setModoEscuro(!modoEscuro); vibrarLeve(); }} 
+                style={{ background: '#F1F5F9', border: '1px solid #E2E8F0', borderRadius: '50%', width: '34px', height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', cursor: 'pointer' }}
+              >
+                {modoEscuro ? '☀️' : '🌙'}
+              </motion.button>
+
               <div style={{ textAlign: 'right' }}>
                 <h2 style={{ margin: 0, color: '#1E293B', fontSize: '0.85rem', fontWeight: '600' }}>{usuarioLogado.nome}</h2>
                 <p style={{ margin: 0, fontSize: '0.65rem', color: modoDeus ? '#92400E' : '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: modoDeus ? '700' : 'normal' }}>
