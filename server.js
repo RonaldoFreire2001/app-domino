@@ -543,7 +543,7 @@ app.post('/desfazer-dupla', pinLimiter, async (req, res) => {
 
 
 
-/// 🔥 ROTA DE VITÓRIA DEFINITIVA E BLINDADA
+// 🔥 ROTA DE VITÓRIA DEFINITIVA E BLINDADA
 let travaVitoria = Promise.resolve();
 app.post('/vitoria', (req, res) => {
     travaVitoria = travaVitoria.then(async () => {
@@ -553,6 +553,45 @@ app.post('/vitoria', (req, res) => {
             if (!mesa || mesa.length === 0) {
                 return res.status(400).json({ error: "Nenhum jogador encontrado nesta mesa." });
             }
+
+            // =========================================
+            // 🔒 REGRA DAS 22:00 E A "SADEIRA"
+            // =========================================
+            const baseTime = new Date();
+            const formatter = new Intl.DateTimeFormat('en-US', {
+                timeZone: 'America/Bahia',
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', second: '2-digit',
+                hour12: false
+            });
+            const partes = formatter.formatToParts(baseTime);
+            const getPart = (type) => partes.find(p => p.type === type).value;
+            
+            const horaAtualBahia = parseInt(getPart('hour'), 10);
+
+            // Verifica se está no horário proibido (entre 22h e 05h da manhã)
+            if (horaAtualBahia >= 22 || horaAtualBahia < 5) {
+                const ano = getPart('year');
+                const mes = getPart('month');
+                const dia = getPart('day');
+                
+                // Monta o limite exato de 22:00 no fuso de Salvador
+                let dataLimiteBahia = new Date(`${ano}-${mes}-${dia}T22:00:00-03:00`);
+                
+                // Se já for madrugada (ex: 01h), o limite de 22h se refere ao dia de ontem
+                if (horaAtualBahia < 5) {
+                    dataLimiteBahia.setDate(dataLimiteBahia.getDate() - 1);
+                }
+
+                // Verifica se ALGUÉM da mesa sentou DEPOIS das 22h. 
+                // Se sim, significa que eles já jogaram a sadeira ou entraram na mesa fora do horário.
+                const mesaInvalida = mesa.some(j => new Date(j.created_at) >= dataLimiteBahia);
+
+                if (mesaInvalida) {
+                    return res.status(403).json({ error: "PAF fechado! Já passou das 22h e a sadeira desta mesa já foi registrada." });
+                }
+            }
+            // =========================================
 
             let idsSair = [];
             const countFila = Number(filaReal) || 0;
@@ -574,7 +613,6 @@ app.post('/vitoria', (req, res) => {
             }
 
             const perdedores = mesa.filter(j => !vencedores.includes(j.id)).map(j => j.id);
-            const baseTime = new Date();
             let atrasoFilaMs = 0;
             
             try {
@@ -591,16 +629,25 @@ app.post('/vitoria', (req, res) => {
                 const isVencedor = vencedores.includes(jogador.id); 
                 const minutosNaMesa = Math.floor((baseTime.getTime() - new Date(jogador.created_at).getTime()) / 60000);
 
+                // =========================================
+                // 🛡️ BLINDAGEM DO SÁBADO (100% à prova de falhas)
+                // =========================================
+                const diaSemanaBahia = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Bahia', weekday: 'short' }).format(new Date());
+                const isSabado = (diaSemanaBahia === 'Sat');
+
                 let updateData = {
                     ultimo_jogo_at: baseTime.toISOString(),
-                    partidas_hoje: (jogador.partidas_hoje || 0) + 1,
-                    partidas_jogadas: (jogador.partidas_jogadas || 0) + 1, 
-                    partidas_semana: (jogador.partidas_semana || 0) + 1, 
-                    vitorias: isVencedor ? (jogador.vitorias || 0) + 1 : (jogador.vitorias || 0), 
-                    vitorias_semana: isVencedor ? (jogador.vitorias_semana || 0) + 1 : (jogador.vitorias_semana || 0),
                     tempo_sentado: (jogador.tempo_sentado || 0) + (minutosNaMesa > 0 ? minutosNaMesa : 15) 
                 };
 
+                // Se NÃO for sábado lógico, atualiza os contadores oficiais do semestre/semana
+                if (!isSabado) {
+                    updateData.partidas_hoje = (jogador.partidas_hoje || 0) + 1;
+                    updateData.partidas_jogadas = (jogador.partidas_jogadas || 0) + 1; 
+                    updateData.partidas_semana = (jogador.partidas_semana || 0) + 1; 
+                    updateData.vitorias = isVencedor ? (jogador.vitorias || 0) + 1 : (jogador.vitorias || 0); 
+                    updateData.vitorias_semana = isVencedor ? (jogador.vitorias_semana || 0) + 1 : (jogador.vitorias_semana || 0);
+                }
                 if (vaiSair) {
                     updateData.status = 'espera'; // 🚨 CORRIGIDO PARA 'espera' PARA NÃO SUMIR!
                     updateData.mesa_atual = null;
@@ -625,6 +672,7 @@ app.post('/vitoria', (req, res) => {
     }).catch(err => { 
         res.status(500).json({ error: "Erro crítico na fila de execução." }); 
     });
+
 });
 app.get('/estatisticas-gerais', async (req, res) => {
     try {
@@ -930,6 +978,57 @@ app.post('/admin/configuracoes', async (req, res) => {
         
         res.json({ message: "Aplicativo atualizado para todos os jogadores!" });
     } catch (err) { res.status(500).json({ error: "Erro ao salvar as configurações." }); }
+});
+app.get('/ranking-sabado', async (req, res) => {
+    try {
+        const hoje = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Bahia' }));
+        const diaSemana = hoje.getDay(); 
+        const diasParaSabado = diaSemana === 6 ? 0 : (diaSemana + 1); 
+        const dataUltimoSabado = new Date(hoje);
+        dataUltimoSabado.setDate(hoje.getDate() - diasParaSabado);
+        
+        const ano = dataUltimoSabado.getFullYear();
+        const mes = String(dataUltimoSabado.getMonth() + 1).padStart(2, '0');
+        const dia = String(dataUltimoSabado.getDate()).padStart(2, '0');
+        const dataFiltro = `${ano}-${mes}-${dia}`;
+        
+        const start = `${dataFiltro}T00:00:00-03:00`;
+        const end = `${dataFiltro}T23:59:59-03:00`;
+
+        const { data: partidas, error } = await supabase
+            .from('historico_partidas')
+            .select('*')
+            .gte('data_partida', start)
+            .lte('data_partida', end);
+
+        if (error) throw error;
+        if (!partidas || partidas.length === 0) return res.json([]);
+
+        const pontos = {};
+        partidas.forEach(p => {
+            if (p.vencedor1_id) pontos[p.vencedor1_id] = (pontos[p.vencedor1_id] || 0) + 3;
+            if (p.vencedor2_id) pontos[p.vencedor2_id] = (pontos[p.vencedor2_id] || 0) + 3;
+            if (p.perdedor1_id) pontos[p.perdedor1_id] = (pontos[p.perdedor1_id] || 0) - 1;
+            if (p.perdedor2_id) pontos[p.perdedor2_id] = (pontos[p.perdedor2_id] || 0) - 1;
+        });
+
+        const ids = Object.keys(pontos);
+        const { data: jogadores } = await supabase.from('jogadores').select('id, nome, avatar_url').in('id', ids);
+
+        const ranking = ids.map(id => {
+            const j = jogadores.find(x => String(x.id) === String(id));
+            return {
+                id,
+                nome: j ? j.nome : 'Anônimo',
+                foto: j ? j.avatar_url : null,
+                pontos: pontos[id]
+            };
+        }).sort((a, b) => b.pontos - a.pontos);
+
+        res.json(ranking);
+    } catch (err) {
+        res.status(500).json({ error: "Erro interno ao buscar ranking." });
+    }
 });
 
 const PORT = process.env.PORT || 3333;

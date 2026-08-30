@@ -3,6 +3,7 @@ import axios from 'axios';
 import Ranking from '../Ranking';
 
 const API_URL = 'https://app-domino.onrender.com';
+
 const AvatarJogador = ({ url, nome, tamanho = '46px', posicao }) => {
   const [erro, setErro] = useState(false);
   const inicial = nome ? String(nome).charAt(0).toUpperCase() : '';
@@ -46,12 +47,79 @@ const AvatarSeguro = ({ url, nome, tamanho = '35px', corBorda = '#E2E8F0' }) => 
     return <div style={{ width: tamanho, height: tamanho, borderRadius: '50%', backgroundColor: corFundo, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFFFFF', fontWeight: 'bold', border: `2px solid ${corBorda}`, flexShrink: 0, fontSize: '0.9rem' }}>{inicial}</div>;
 };
 
+// ==========================================
+// NOVO COMPONENTE: TAÇA DE SÁBADO
+// ==========================================
+const RankingSabado = ({ API_URL }) => {
+  const [ranking, setRanking] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+
+  useEffect(() => {
+    axios.get(`${API_URL}/ranking-sabado`)
+      .then(res => setRanking(res.data))
+      .catch(() => {})
+      .finally(() => setCarregando(false));
+  }, [API_URL]);
+
+  if (carregando || ranking.length === 0) return null; 
+
+  return (
+    <div style={{ marginBottom: '35px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+        <h3 style={{ margin: 0, color: '#0F172A', fontSize: '0.9rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px' }}>
+          🏆 Taça de Sábado
+        </h3>
+        <span style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: '700', letterSpacing: '0.5px' }}>
+          ÚLTIMO FIM DE SEMANA
+        </span>
+      </div>
+
+      <div style={{ backgroundColor: '#FFFFFF', padding: '10px 15px', borderRadius: '16px', border: '1px solid #E5E7EB', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
+        {ranking.slice(0, 5).map((jog, idx) => {
+          const isTop1 = idx === 0;
+          const isTop3 = idx < 3;
+          let corPosicao = '#64748B';
+          
+          if (idx === 0) corPosicao = '#991B1B'; // Vermelho do app
+          else if (idx === 1) corPosicao = '#475569';
+          else if (idx === 2) corPosicao = '#B45309';
+
+          return (
+            <div key={jog.id} style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between',
+              padding: '12px 0', 
+              borderBottom: idx === 4 || idx === ranking.length - 1 ? 'none' : '1px solid #E2E8F0' 
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ width: '25px', textAlign: 'center', color: corPosicao, fontWeight: '800', fontSize: isTop3 ? '1rem' : '0.9rem' }}>
+                  {idx + 1}º
+                </span>
+                <AvatarSeguro url={jog.foto} nome={jog.nome} tamanho={isTop1 ? '38px' : '32px'} />
+                <span style={{ color: isTop1 ? '#991B1B' : '#0F172A', fontWeight: isTop1 ? '800' : '600', fontSize: '0.9rem', textTransform: 'capitalize' }}>
+                  {jog.nome}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                 <span style={{ color: '#991B1B', fontWeight: '800', fontSize: '1rem' }}>
+                   {jog.pontos} <span style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: '600', marginLeft: '2px' }}>PTS</span>
+                 </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+// ==========================================
+
+
 export default function TelaRanking() {
   const [top10Global, setTop10Global] = useState([]);
   const [estatisticasGerais, setEstatisticasGerais] = useState(null);
   const [mostrarHistorico, setMostrarHistorico] = useState(false);
-  
-  // Inicia vazio, sem depender de Vercel ou .env
   const [top20Historico, setTop20Historico] = useState([]);
 
   useEffect(() => {
@@ -63,17 +131,14 @@ export default function TelaRanking() {
         const resEstat = await axios.get(`${API_URL}/estatisticas-gerais`).catch(() => null);
         if (resEstat && resEstat.data) setEstatisticasGerais(resEstat.data);
 
-        // Baixando o arquivo blindado direto do seu Supabase Storage
         const urlDoArquivo = import.meta.env.VITE_URL_HISTORICO;
         const resHistorico = await axios.get(urlDoArquivo);
         
-        // Trava para evitar que a tela quebre se o JSON vier com colchetes duplos
         const dadosHistorico = Array.isArray(resHistorico.data[0]) 
           ? resHistorico.data[0] 
           : resHistorico.data;
           
         setTop20Historico(dadosHistorico);
-
       } catch (err) {
         console.error("Erro ao carregar os dados:", err);
       }
@@ -137,10 +202,12 @@ export default function TelaRanking() {
         )}
       </div>
 
+      {/* A TAÇA DE SÁBADO APARECE AQUI, LOGO ANTES DO RANKING PRINCIPAL */}
+      <RankingSabado API_URL={API_URL} />
+
       <h3 style={{ margin: '0 0 15px 0', color: '#0F172A', fontSize: '0.9rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px' }}>Classificação</h3>
       <Ranking />
 
-      {/* HISTÓRICO 2016.1 COM TABELA DE VERDADE */}
       <div style={{ marginTop: '40px' }}>
         <button 
           onClick={() => setMostrarHistorico(!mostrarHistorico)}

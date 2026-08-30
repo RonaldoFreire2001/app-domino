@@ -507,7 +507,9 @@ export default function TelaFila() {
         await axios.post(`${API_URL}/vitoria`, { vencedores, mesaId: mesaVitoria, quemFicaId, filaReal, admin_nome: usuarioLogado.nome });
         setModalAberto(false); setVencedores([]); setQuemFicaId(null); setEtapaVitoria(1); carregarFilaETudo();
         toast.success("Vitória confirmada!"); 
-      } catch (error) { toast.error("Erro ao registrar a partida."); } 
+      } catch (error) { 
+        toast.error(error.response?.data?.error || "Erro ao registrar a partida. Horário não permitido."); 
+      }
       finally { setIsGuardando(false); }
     });
   };
