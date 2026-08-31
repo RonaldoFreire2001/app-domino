@@ -48,7 +48,7 @@ const AvatarSeguro = ({ url, nome, tamanho = '35px', corBorda = '#E2E8F0' }) => 
 };
 
 // ==========================================
-// NOVO COMPONENTE: MELHORES DE SÁBADO
+// NOVO COMPONENTE: MELHORES DE SÁBADO (SEMPRE VISÍVEL)
 // ==========================================
 const RankingSabado = ({ API_URL }) => {
   const [ranking, setRanking] = useState([]);
@@ -60,8 +60,6 @@ const RankingSabado = ({ API_URL }) => {
       .catch(() => {})
       .finally(() => setCarregando(false));
   }, [API_URL]);
-
-  if (carregando || ranking.length === 0) return null; 
 
   return (
     <div style={{ marginBottom: '35px' }}>
@@ -76,48 +74,58 @@ const RankingSabado = ({ API_URL }) => {
           </h3>
         </div>
         <span style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: '700', letterSpacing: '0.5px', background: '#F1F5F9', padding: '5px 10px', borderRadius: '6px' }}>
-          ÚLTIMO FIM DE SEMANA
+          PRÓXIMO FIM DE SEMANA
         </span>
       </div>
 
-      <div style={{ backgroundColor: '#FFFFFF', padding: '5px 15px', borderRadius: '16px', border: '1px solid #E5E7EB', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
-        {ranking.slice(0, 5).map((jog, idx) => {
-          const isTop1 = idx === 0;
-          const isTop3 = idx < 3;
-          let corPosicao = '#64748B';
-          
-          if (idx === 0) corPosicao = '#991B1B'; 
-          else if (idx === 1) corPosicao = '#475569';
-          else if (idx === 2) corPosicao = '#B45309';
+      <div style={{ backgroundColor: '#FFFFFF', padding: '15px', borderRadius: '16px', border: '1px solid #E5E7EB', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
+        {carregando ? (
+          <div style={{ textAlign: 'center', padding: '10px 0', color: '#94A3B8', fontSize: '0.85rem' }}>
+            Carregando...
+          </div>
+        ) : ranking.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '15px 0', color: '#64748B', fontSize: '0.85rem', fontWeight: '500' }}>
+            Nenhum registro ainda. O ranking acende no próximo sábado!
+          </div>
+        ) : (
+          ranking.slice(0, 5).map((jog, idx) => {
+            const isTop1 = idx === 0;
+            const isTop3 = idx < 3;
+            let corPosicao = '#64748B';
+            
+            if (idx === 0) corPosicao = '#991B1B'; 
+            else if (idx === 1) corPosicao = '#475569';
+            else if (idx === 2) corPosicao = '#B45309';
 
-          return (
-            <div key={jog.id} style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'space-between',
-              padding: '12px 10px', 
-              borderBottom: idx === 4 || idx === ranking.length - 1 ? 'none' : '1px solid #F8FAFC',
-              background: isTop1 ? 'linear-gradient(90deg, rgba(153, 27, 27, 0.04) 0%, rgba(255,255,255,0) 80%)' : 'transparent',
-              borderRadius: isTop1 ? '8px' : '0',
-              marginTop: isTop1 ? '5px' : '0'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                <span style={{ width: '22px', textAlign: 'center', color: corPosicao, fontWeight: '800', fontSize: isTop3 ? '1.05rem' : '0.9rem' }}>
-                  {idx + 1}º
-                </span>
-                <AvatarSeguro url={jog.foto} nome={jog.nome} tamanho={isTop1 ? '40px' : '34px'} />
-                <span style={{ color: isTop1 ? '#991B1B' : '#1E293B', fontWeight: isTop1 ? '800' : '600', fontSize: '0.95rem', textTransform: 'capitalize' }}>
-                  {jog.nome}
-                </span>
+            return (
+              <div key={jog.id} style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between',
+                padding: '12px 10px', 
+                borderBottom: idx === 4 || idx === ranking.length - 1 ? 'none' : '1px solid #F8FAFC',
+                background: isTop1 ? 'linear-gradient(90deg, rgba(153, 27, 27, 0.04) 0%, rgba(255,255,255,0) 80%)' : 'transparent',
+                borderRadius: isTop1 ? '8px' : '0',
+                marginTop: isTop1 ? '5px' : '0'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                  <span style={{ width: '22px', textAlign: 'center', color: corPosicao, fontWeight: '800', fontSize: isTop3 ? '1.05rem' : '0.9rem' }}>
+                    {idx + 1}º
+                  </span>
+                  <AvatarSeguro url={jog.foto} nome={jog.nome} tamanho={isTop1 ? '40px' : '34px'} />
+                  <span style={{ color: isTop1 ? '#991B1B' : '#1E293B', fontWeight: isTop1 ? '800' : '600', fontSize: '0.95rem', textTransform: 'capitalize' }}>
+                    {jog.nome}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                   <span style={{ color: isTop1 ? '#991B1B' : '#334155', fontWeight: '800', fontSize: isTop1 ? '1.1rem' : '1rem' }}>
+                     {jog.pontos} <span style={{ fontSize: '0.7rem', color: '#94A3B8', fontWeight: '700', marginLeft: '3px' }}>PTS</span>
+                   </span>
+                </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-                 <span style={{ color: isTop1 ? '#991B1B' : '#334155', fontWeight: '800', fontSize: isTop1 ? '1.1rem' : '1rem' }}>
-                   {jog.pontos} <span style={{ fontSize: '0.7rem', color: '#94A3B8', fontWeight: '700', marginLeft: '3px' }}>PTS</span>
-                 </span>
-              </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
     </div>
   );
