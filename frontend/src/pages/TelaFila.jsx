@@ -931,8 +931,8 @@ export default function TelaFila() {
       >
         <div style={{ 
           padding: '20px', fontFamily: 'Inter, sans-serif', maxWidth: '800px', margin: '0 auto', 
-          background: modoDeus ? 'linear-gradient(135deg, #FFFFFF 0%, #FAFAFA 40%, #FFF5D1 100%)' : '#F9FAFB', 
-          color: '#0F172A', minHeight: '100vh', boxSizing: 'border-box', transition: 'background 0.5s ease'
+         background: modoDeus ? 'linear-gradient(135deg, #FFFFFF 0%, #FAFAFA 40%, #FFF5D1 100%)' : (modoEscuro ? '#0F172A' : '#F9FAFB'), 
+          color: modoEscuro ? '#F8FAFC' : '#0F172A', minHeight: '100vh', boxSizing: 'border-box', transition: 'background 0.5s ease'
         }}>
           <BannerApp />
           <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', paddingBottom: '15px', borderBottom: '1px solid #E5E7EB' }}>
