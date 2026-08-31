@@ -48,7 +48,7 @@ const AvatarSeguro = ({ url, nome, tamanho = '35px', corBorda = '#E2E8F0' }) => 
 };
 
 // ==========================================
-// NOVO COMPONENTE: TAÇA DE SÁBADO
+// NOVO COMPONENTE: MELHORES DE SÁBADO
 // ==========================================
 const RankingSabado = ({ API_URL }) => {
   const [ranking, setRanking] = useState([]);
@@ -66,21 +66,27 @@ const RankingSabado = ({ API_URL }) => {
   return (
     <div style={{ marginBottom: '35px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-        <h3 style={{ margin: 0, color: '#0F172A', fontSize: '0.9rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px' }}>
-          🏆 Taça de Sábado
-        </h3>
-        <span style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: '700', letterSpacing: '0.5px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Ícone Premium em SVG substituindo o emoji */}
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="#991B1B"/>
+          </svg>
+          <h3 style={{ margin: 0, color: '#0F172A', fontSize: '0.95rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>
+            Melhores de Sábado
+          </h3>
+        </div>
+        <span style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: '700', letterSpacing: '0.5px', background: '#F1F5F9', padding: '5px 10px', borderRadius: '6px' }}>
           ÚLTIMO FIM DE SEMANA
         </span>
       </div>
 
-      <div style={{ backgroundColor: '#FFFFFF', padding: '10px 15px', borderRadius: '16px', border: '1px solid #E5E7EB', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
+      <div style={{ backgroundColor: '#FFFFFF', padding: '5px 15px', borderRadius: '16px', border: '1px solid #E5E7EB', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
         {ranking.slice(0, 5).map((jog, idx) => {
           const isTop1 = idx === 0;
           const isTop3 = idx < 3;
           let corPosicao = '#64748B';
           
-          if (idx === 0) corPosicao = '#991B1B'; // Vermelho do app
+          if (idx === 0) corPosicao = '#991B1B'; 
           else if (idx === 1) corPosicao = '#475569';
           else if (idx === 2) corPosicao = '#B45309';
 
@@ -89,21 +95,24 @@ const RankingSabado = ({ API_URL }) => {
               display: 'flex', 
               alignItems: 'center', 
               justifyContent: 'space-between',
-              padding: '12px 0', 
-              borderBottom: idx === 4 || idx === ranking.length - 1 ? 'none' : '1px solid #E2E8F0' 
+              padding: '12px 10px', 
+              borderBottom: idx === 4 || idx === ranking.length - 1 ? 'none' : '1px solid #F8FAFC',
+              background: isTop1 ? 'linear-gradient(90deg, rgba(153, 27, 27, 0.04) 0%, rgba(255,255,255,0) 80%)' : 'transparent',
+              borderRadius: isTop1 ? '8px' : '0',
+              marginTop: isTop1 ? '5px' : '0'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span style={{ width: '25px', textAlign: 'center', color: corPosicao, fontWeight: '800', fontSize: isTop3 ? '1rem' : '0.9rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                <span style={{ width: '22px', textAlign: 'center', color: corPosicao, fontWeight: '800', fontSize: isTop3 ? '1.05rem' : '0.9rem' }}>
                   {idx + 1}º
                 </span>
-                <AvatarSeguro url={jog.foto} nome={jog.nome} tamanho={isTop1 ? '38px' : '32px'} />
-                <span style={{ color: isTop1 ? '#991B1B' : '#0F172A', fontWeight: isTop1 ? '800' : '600', fontSize: '0.9rem', textTransform: 'capitalize' }}>
+                <AvatarSeguro url={jog.foto} nome={jog.nome} tamanho={isTop1 ? '40px' : '34px'} />
+                <span style={{ color: isTop1 ? '#991B1B' : '#1E293B', fontWeight: isTop1 ? '800' : '600', fontSize: '0.95rem', textTransform: 'capitalize' }}>
                   {jog.nome}
                 </span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center' }}>
-                 <span style={{ color: '#991B1B', fontWeight: '800', fontSize: '1rem' }}>
-                   {jog.pontos} <span style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: '600', marginLeft: '2px' }}>PTS</span>
+                 <span style={{ color: isTop1 ? '#991B1B' : '#334155', fontWeight: '800', fontSize: isTop1 ? '1.1rem' : '1rem' }}>
+                   {jog.pontos} <span style={{ fontSize: '0.7rem', color: '#94A3B8', fontWeight: '700', marginLeft: '3px' }}>PTS</span>
                  </span>
               </div>
             </div>
@@ -114,7 +123,6 @@ const RankingSabado = ({ API_URL }) => {
   );
 };
 // ==========================================
-
 
 export default function TelaRanking() {
   const [top10Global, setTop10Global] = useState([]);

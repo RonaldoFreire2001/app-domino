@@ -15,6 +15,97 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
 
+// ==========================================
+// COMPONENTE ONBOARDING DE REGRAS 
+// ==========================================
+const OnboardingRegras = () => {
+  const [aberto, setAberto] = useState(false);
+
+  useEffect(() => {
+    const jaLeu = localStorage.getItem('onboardingRegrasLido');
+    if (!jaLeu) {
+      setAberto(true); 
+    }
+  }, []);
+
+  const fecharModal = () => {
+    localStorage.setItem('onboardingRegrasLido', 'true');
+    setAberto(false);
+  };
+
+  if (!aberto) return null;
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0, left: 0, right: 0, bottom: 0,
+      backgroundColor: 'rgba(15, 23, 42, 0.75)', 
+      backdropFilter: 'blur(5px)', 
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 9999, 
+      padding: '20px'
+    }}>
+      <div style={{
+        backgroundColor: '#FFFFFF',
+        borderRadius: '16px',
+        padding: '24px',
+        width: '100%',
+        maxWidth: '380px',
+        boxShadow: '0 10px 40px rgba(0,0,0,0.15)',
+        animation: 'fadeIn 0.3s ease-out'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+          <div style={{ backgroundColor: '#FEF2F2', padding: '8px', borderRadius: '50%', display: 'flex' }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="#991B1B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M12 16V12" stroke="#991B1B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M12 8H12.01" stroke="#991B1B" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+          <h3 style={{ margin: 0, color: '#0F172A', fontSize: '1.1rem', fontWeight: '800', letterSpacing: '-0.5px' }}>
+            Novas Regras Oficiais
+          </h3>
+        </div>
+        
+        <p style={{ color: '#475569', fontSize: '0.9rem', lineHeight: '1.5', margin: '0 0 20px 0' }}>
+          Para melhorar a dinâmica no PAF, duas regras entraram em vigor:
+        </p>
+
+        <ul style={{ margin: '0 0 24px 0', paddingLeft: '18px', color: '#334155', fontSize: '0.85rem', lineHeight: '1.6' }}>
+          <li style={{ marginBottom: '12px' }}>
+            <strong style={{ color: '#0F172A' }}>Horário Limite:</strong> O sistema fecha às <strong style={{ color: '#991B1B' }}>22h</strong>. Depois disso, só é registrada a vitória de quem já estava na mesa.
+          </li>
+          <li>
+            <strong style={{ color: '#0F172A' }}>Elite de Sábado:</strong> Aos sábados, as partidas não valem para o semestre, mas formam um ranking exclusivo do fim de semana.
+          </li>
+        </ul>
+
+        <button 
+          onClick={fecharModal}
+          style={{
+            width: '100%',
+            padding: '14px',
+            backgroundColor: '#991B1B',
+            color: '#FFFFFF',
+            border: 'none',
+            borderRadius: '8px',
+            fontWeight: '700',
+            fontSize: '0.95rem',
+            cursor: 'pointer',
+            boxShadow: '0 4px 12px rgba(153, 27, 27, 0.25)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px'
+          }}
+        >
+          Entendi, vamos jogar
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // Assina as notificações (Push Nativo ou Push de Navegador)
 const assinarNotificacoes = async (usuario) => {
   if (!usuario) return;
@@ -95,6 +186,7 @@ const DestaqueTop1 = ({ config }) => {
     </div>
   );
 };
+
 const BannerApp = () => {
   const [mostrar, setMostrar] = useState(false);
 
@@ -187,7 +279,7 @@ export default function TelaFila() {
   
 
   useEffect(() => { usuarioRef.current = usuarioLogado; }, [usuarioLogado]);
-  // 🧭 GATILHO DO TUTORIAL: Verifica se o usuário logado já viu o guia
+  
   useEffect(() => {
     if (usuarioLogado && usuarioLogado.termos_aceitos) {
       const jaViuTutorial = localStorage.getItem(`@DominoPAF:tutorial_${usuarioLogado.id}`);
@@ -645,6 +737,7 @@ export default function TelaFila() {
   // ==========================================
   return (
     <>
+      <OnboardingRegras />
       {/* OVERLAY DE AVISO "PREPARE-SE" */}
       <AnimatePresence>
         {alertaPreparacao && (
