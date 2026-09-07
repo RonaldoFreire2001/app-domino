@@ -15,5 +15,8 @@ logs
 *.log
 .DS_Store
 
-firebase-chave.json
+firebase_key.json
 google-services.json
+*.csv
+importar.js
+firebase-key.json

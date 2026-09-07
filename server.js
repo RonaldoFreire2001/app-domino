@@ -1,15 +1,29 @@
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
-const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 const crypto = require('crypto');
 const cron = require('node-cron');
 const webpush = require('web-push');
 const compression = require('compression');
+
+// ==========================================
+// 🔔 1. CONFIGURAÇÃO DO FIREBASE (ADMIN)
+// ==========================================
 const { initializeApp, cert } = require('firebase-admin/app');
 const { getMessaging } = require('firebase-admin/messaging');
+const { getFirestore, FieldValue, FieldPath } = require('firebase-admin/firestore');
 
+const serviceAccount = require("./firebase-key.json"); 
+initializeApp({
+    credential: cert(serviceAccount)
+});
+
+const db = getFirestore();
+
+// ==========================================
+// ⚙️ 2. CONFIGURAÇÃO DO SERVIDOR EXPRESS
+// ==========================================
 const app = express();
 app.use(compression());
 app.set('trust proxy', 1);
@@ -18,12 +32,10 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(cors());
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_KEY; 
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-// 🔔 1. CONFIGURAÇÃO DO WEB PUSH (NAVEGADOR)
-const VAPID_PUBLIC_KEY = 'BOHGtXzWoRERIwsD_4K8YnWdJ6bJ8ZQ9Ua4K40zNRUQHJWnZI7csL7ZRHD_g2ycqLy5GvWBCtf9wEw6DUXxLymM';
+// ==========================================
+// 🔔 3. CONFIGURAÇÃO DO WEB PUSH (NAVEGADOR)
+// ==========================================
+const VAPID_PUBLIC_KEY = 'BDxp0ouiBhLx8DHv685o7ccI_fz985azqaEdetcvJC49q4MBDMPigJVxtiHPR9nJ0AmM8Z8io5JKAyk0KFyGMds';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY; 
 
 webpush.setVapidDetails(
@@ -32,12 +44,7 @@ webpush.setVapidDetails(
     VAPID_PRIVATE_KEY
 );
 
-// 🔔 2. CONFIGURAÇÃO DO FIREBASE (APK NATIVO)
-const serviceAccount = require("./firebase-chave.json"); 
-initializeApp({
-    credential: cert(serviceAccount)
-});
-
+// LIMITADORES DE REQUISIÇÃO
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, max: 10, message: { error: "Muitas tentativas. Tente novamente em 15 minutos." }
 });
@@ -49,25 +56,27 @@ const SENHA_ADMIN = process.env.ADMIN_PASSWORD;
 let mesasAtivas = { 1: true, 2: true, 3: true };
 
 // ==========================================
-// 🚨 NOTIFICAÇÕES (HÍBRIDAS & PREMIUM)
+// 🚨 NOTIFICAÇÕES E CRON JOBS
 // ==========================================
-
 let notificadosProximos = new Set(); 
 
 async function avisarTodoMundo(titulo, mensagem) {
     try {
-        const { data: jogadores } = await supabase.from('jogadores').select('nome, push_sub, push_token');
-        if (!jogadores || jogadores.length === 0) return;
+        const snapshot = await db.collection('jogadores').get();
+        if (snapshot.empty) return;
 
         const webPayload = JSON.stringify({ title: titulo, body: mensagem });
         const firebaseTokens = [];
 
-        for (const j of jogadores) {
+        snapshot.forEach(doc => {
+            const j = doc.data();
             if (j.push_sub) {
-                try { await webpush.sendNotification(j.push_sub, webPayload); } catch (err) {}
+                webpush.sendNotification(j.push_sub, webPayload).catch(() => {});
             }
-            if (j.push_token) { firebaseTokens.push(j.push_token); }
-        }
+            if (j.push_token) { 
+                firebaseTokens.push(j.push_token); 
+            }
+        });
 
         if (firebaseTokens.length > 0) {
             await getMessaging().sendEachForMulticast({
@@ -80,8 +89,9 @@ async function avisarTodoMundo(titulo, mensagem) {
 
 async function avisarJogadorProximo(jogadorId) {
     try {
-        const { data: jogador } = await supabase.from('jogadores').select('nome, push_sub, push_token').eq('id', jogadorId).single();
-        if (!jogador) return;
+        const docRef = await db.collection('jogadores').doc(String(jogadorId)).get();
+        if (!docRef.exists) return;
+        const jogador = docRef.data();
 
         const titulo = "Atenção: Prepare-se";
         const mensagem = "Você é um dos próximos da fila de espera. Vá se aproximando da área de jogo.";
@@ -104,7 +114,24 @@ async function avisarJogadorProximo(jogadorId) {
 
 const realizarResetGeral = async () => {
     try {
-        await supabase.from('jogadores').update({ vitorias_semana: 0, partidas_semana: 0 }).neq('id', '00000000-0000-0000-0000-000000000000'); 
+        const snapshot = await db.collection('jogadores').get();
+        let batch = db.batch();
+        let contagem = 0;
+        
+        // Fatiamento do Batch para evitar o erro do limite de 500 do Firebase
+        for (const doc of snapshot.docs) {
+            if (doc.id !== '00000000-0000-0000-0000-000000000000') {
+                batch.update(doc.ref, { vitorias_semana: 0, partidas_semana: 0 });
+                contagem++;
+                
+                if (contagem >= 450) {
+                    await batch.commit();
+                    batch = db.batch();
+                    contagem = 0;
+                }
+            }
+        }
+        if (contagem > 0) await batch.commit();
     } catch (erro) { console.error("Erro na faxina semanal:", erro); }
 };
 
@@ -112,9 +139,10 @@ cron.schedule('0 4 * * 1', async () => { await realizarResetGeral(); }, { timezo
 
 cron.schedule('30 22 * * 1-5', async () => {
     try {
-        const { data: jogadores } = await supabase.from('jogadores').select('*');
-        if (!jogadores || jogadores.length === 0) return;
+        const snapshot = await db.collection('jogadores').get();
+        if (snapshot.empty) return;
 
+        const jogadores = snapshot.docs.map(doc => doc.data());
         const ranking = jogadores.map(jogador => {
             const vitorias = jogador.vitorias_semana || 0;
             const partidas = jogador.partidas_semana || 0;
@@ -124,31 +152,27 @@ cron.schedule('30 22 * * 1-5', async () => {
 
         ranking.sort((a, b) => b.pontos - a.pontos);
         const top1 = ranking[0];
-        await avisarTodoMundo("Encerramento Diário", `O destaque de hoje foi ${top1.nome} com ${top1.pontos} pontos. O ranking foi atualizado.`);
+        if(top1) await avisarTodoMundo("Encerramento Diário", `O destaque de hoje foi ${top1.nome} com ${top1.pontos} pontos. O ranking foi atualizado.`);
     } catch (err) {}
 }, { scheduled: true, timezone: "America/Bahia" });
 
 cron.schedule('0 11 * * *', async () => {
     try {
         const doisDiasAtras = new Date(); doisDiasAtras.setDate(doisDiasAtras.getDate() - 2);
-        const { data: sumidos } = await supabase.from('jogadores').select('nome, push_sub, push_token, ultimo_jogo_at').lt('ultimo_jogo_at', doisDiasAtras.toISOString()); 
-        if (!sumidos || sumidos.length === 0) return;
+        const snapshot = await db.collection('jogadores').where('ultimo_jogo_at', '<', doisDiasAtras.toISOString()).get();
+        if (snapshot.empty) return;
 
-        for (const j of sumidos) {
-            if (j.push_sub) try { await webpush.sendNotification(j.push_sub, JSON.stringify({ title: "Notificação de Ausência", body: "Sentimos sua falta nas mesas. Retorne para defender sua posição no ranking." })); } catch(e){}
-            if (j.push_token) try { await getMessaging().send({ token: j.push_token, notification: { title: "Notificação de Ausência", body: "Sentimos sua falta nas mesas. Retorne para defender sua posição no ranking." }}); } catch(e){}
-        }
+        snapshot.forEach(doc => {
+            const j = doc.data();
+            if (j.push_sub) try { webpush.sendNotification(j.push_sub, JSON.stringify({ title: "Notificação de Ausência", body: "Sentimos sua falta nas mesas. Retorne para defender sua posição no ranking." })); } catch(e){}
+            if (j.push_token) try { getMessaging().send({ token: j.push_token, notification: { title: "Notificação de Ausência", body: "Sentimos sua falta nas mesas. Retorne para defender sua posição no ranking." }}); } catch(e){}
+        });
     } catch (err) {}
 }, { scheduled: true, timezone: "America/Bahia" });
-
-setInterval(async () => {
-    try { await supabase.rpc('rodar_relogio_domino'); } catch (err) {}
-}, 60000);
 
 // ==========================================
 // 🧠 LÓGICA CORE: ORDENAÇÃO E ALOCAÇÃO
 // ==========================================
-
 function ordenarFila(filaBruta) {
     const UMA_HORA_EM_MS = 60 * 60 * 1000;
     return filaBruta.sort((a, b) => {
@@ -183,15 +207,14 @@ async function alocarMesas() {
     do {
         tentarNovamente = false; 
         try {
-            const { data: jogando } = await supabase.from('jogadores').select('*').eq('status', 'mesa');
-            let mesa1 = jogando ? jogando.filter(j => j.mesa_atual === 1) : [];
-            let mesa2 = jogando ? jogando.filter(j => j.mesa_atual === 2) : [];
-            let mesa3 = jogando ? jogando.filter(j => j.mesa_atual === 3) : [];
+            const snapshotJogadores = await db.collection('jogadores').get();
+            const todosJogadores = snapshotJogadores.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-            const { data: filaBruta } = await supabase.from('jogadores').select('*').eq('status', 'espera');
-            let espera = filaBruta || [];
+            let mesa1 = todosJogadores.filter(j => j.status === 'mesa' && j.mesa_atual === 1);
+            let mesa2 = todosJogadores.filter(j => j.status === 'mesa' && j.mesa_atual === 2);
+            let mesa3 = todosJogadores.filter(j => j.status === 'mesa' && j.mesa_atual === 3);
+            let espera = todosJogadores.filter(j => j.status === 'espera');
 
-            // 🚨 CASCATA APRIMORADA: Move pessoas de mesas incompletas para as principais
             if (mesa1.length < 4 && mesa2.length > 0 && mesa2.length < 4) { espera = [...espera, ...mesa2]; mesa2 = []; }
             if (mesa1.length < 4 && mesa3.length > 0 && mesa3.length < 4) { espera = [...espera, ...mesa3]; mesa3 = []; }
             if (mesa1.length === 4 && mesa2.length < 4 && mesa3.length > 0 && mesa3.length < 4) { espera = [...espera, ...mesa3]; mesa3 = []; }
@@ -211,7 +234,7 @@ async function alocarMesas() {
                 if (processados.has(jogador.id)) continue;
 
                 const pref = String(jogador.preferencia || '').toLowerCase().trim();
-                const isDupla = jogador.dupla_id !== null;
+                const isDupla = jogador.dupla_id !== null && jogador.dupla_id !== undefined;
 
                 if (isDupla) {
                     const parceiro = filaOrdenada.find(j => j.dupla_id === jogador.dupla_id && j.id !== jogador.id);
@@ -230,28 +253,35 @@ async function alocarMesas() {
                 if (selecionadosM3.length < m3_vagas && (pref.includes('3') || pref.includes('qualquer'))) { selecionadosM3.push(jogador); continue; }
             }
 
-            // 🚨 A REGRA DE OURO DA FILA:
-            // Uma mesa vazia (0 jogadores) SÓ pode ser aberta se tiver 4 pessoas prontas na fila.
-            // Se não formar 4, eles continuam aguardando na fila.
             if (mesa1.length === 0 && selecionadosM1.length < 4) selecionadosM1 = [];
             if (mesa2.length === 0 && selecionadosM2.length < 4) selecionadosM2 = [];
             if (mesa3.length === 0 && selecionadosM3.length < 4) selecionadosM3 = [];
 
-            for (const jogador of filaOrdenada) {
-                if (selecionadosM1.includes(jogador)) {
-                    await supabase.from('jogadores').update({ status: 'mesa', mesa_atual: 1 }).eq('id', jogador.id);
-                }
-                else if (selecionadosM2.includes(jogador)) {
-                    await supabase.from('jogadores').update({ status: 'mesa', mesa_atual: 2 }).eq('id', jogador.id);
-                }
-                else if (selecionadosM3.includes(jogador)) {
-                    await supabase.from('jogadores').update({ status: 'mesa', mesa_atual: 3 }).eq('id', jogador.id);
-                }
-                else if (jogador.status === 'mesa') await supabase.from('jogadores').update({ status: 'espera', mesa_atual: null }).eq('id', jogador.id);
-            }
+            const batch = db.batch();
+            let updatesRealizados = 0;
 
-            const { data: novaEspera } = await supabase.from('jogadores').select('*').eq('status', 'espera');
-            if (novaEspera && novaEspera.length > 0) {
+            for (const jogador of todosJogadores) {
+                let novoStatus = jogador.status;
+                let novaMesa = jogador.mesa_atual;
+
+                if (selecionadosM1.some(j => j.id === jogador.id)) { novoStatus = 'mesa'; novaMesa = 1; }
+                else if (selecionadosM2.some(j => j.id === jogador.id)) { novoStatus = 'mesa'; novaMesa = 2; }
+                else if (selecionadosM3.some(j => j.id === jogador.id)) { novoStatus = 'mesa'; novaMesa = 3; }
+                else if (jogador.status === 'mesa') { novoStatus = 'espera'; novaMesa = null; }
+
+                // BLINDAGEM DE CUSTOS: Só manda para o banco se a pessoa realmente se mexeu
+                if (novoStatus !== jogador.status || novaMesa !== jogador.mesa_atual) {
+                    const docRef = db.collection('jogadores').doc(String(jogador.id));
+                    batch.update(docRef, { status: novoStatus, mesa_atual: novaMesa });
+                    updatesRealizados++;
+                }
+            }
+            if (updatesRealizados > 0) await batch.commit();
+
+            const snapshotNovaEspera = await db.collection('jogadores').where('status', '==', 'espera').get();
+            const novaEspera = snapshotNovaEspera.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            
+            if (novaEspera.length > 0) {
                 const novosEsperaOrdenados = ordenarFila(novaEspera);
                 const top2Ids = novosEsperaOrdenados.slice(0, 2).map(j => j.id);
 
@@ -275,10 +305,10 @@ async function alocarMesas() {
     } while (tentarNovamente); 
     isAlocando = false;
 }
+
 // ==========================================
 // 🛡️ ROTAS: ADMIN E DEUS
 // ==========================================
-
 app.post('/login-admin', loginLimiter, (req, res) => {
     const { senhaDigitada } = req.body;
     if (senhaDigitada === SENHA_ADMIN) res.json({ autorizado: true });
@@ -290,16 +320,14 @@ app.post('/admin/deus', async (req, res) => {
     if (senhaMestra !== SENHA_ADMIN) return res.status(401).json({ error: "Acesso negado." });
 
     try {
+        const docRef = db.collection('jogadores').doc(String(jogadorId));
         if (acao === 'expulsar') {
-            await supabase.from('jogadores').update({ status: 'ausente', mesa_atual: null }).eq('id', jogadorId);
+            await docRef.update({ status: 'ausente', mesa_atual: null });
         } else if (acao === 'mover_fila') {
-            // 🔥 REMOVIDA A DUPLA_ID AQUI para evitar que ele leve alguém junto
-            await supabase.from('jogadores').update({ status: 'espera', mesa_atual: null, dupla_id: null, created_at: new Date().toISOString() }).eq('id', jogadorId);
+            await docRef.update({ status: 'espera', mesa_atual: null, dupla_id: null, created_at: new Date().toISOString() });
         } else if (acao === 'forcar_mesa') {
-            await supabase.from('jogadores').update({ status: 'mesa', mesa_atual: destino }).eq('id', jogadorId);
+            await docRef.update({ status: 'mesa', mesa_atual: destino });
         }
-
-        // Sem chamada ao alocarMesas, garantindo a soberania do ADM
         res.json({ message: "Operação executada." });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -309,14 +337,10 @@ app.post('/admin/forcar-entrada', async (req, res) => {
   if (senhaMestra !== SENHA_ADMIN) return res.status(401).json({ error: "Acesso negado." });
 
   try {
-    const { error: updateErr } = await supabase.from('jogadores').update({
+    const docRef = db.collection('jogadores').doc(String(jogadorId));
+    await docRef.update({
         status: 'espera', preferencia: preferencia || 'Qualquer', mesa_atual: null, created_at: new Date().toISOString()
-    }).eq('id', jogadorId);
-
-    if (updateErr) throw updateErr;
-    
-    // 🔥 LINHA DO ALOCAR MESAS REMOVIDA AQUI TAMBÉM!
-    
+    });
     res.json({ success: true, message: "Puxado pra fila com sucesso!" });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -337,11 +361,13 @@ app.patch('/admin/congelar-toda-fila', pinLimiter, async (req, res) => {
 
     try {
         const novoStatus = acao === 'congelar' ? 'congelado' : 'espera';
-        const { error } = await supabase.from('jogadores')
-            .update({ status: novoStatus })
-            .in('status', ['espera', 'congelado']); 
-            
-        if (error) throw error;
+        const snapshot = await db.collection('jogadores').where('status', 'in', ['espera', 'congelado']).get();
+        
+        if (!snapshot.empty) {
+            const batch = db.batch();
+            snapshot.forEach(doc => { batch.update(doc.ref, { status: novoStatus }); });
+            await batch.commit();
+        }
         await alocarMesas();
         res.json({ message: `Fila ${acao}da com sucesso!` });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -352,37 +378,41 @@ app.delete('/limpar-fila', async (req, res) => {
     if (adminKey !== SENHA_ADMIN) return res.status(401).json({ error: "Acesso negado!" });
 
     try {
-        await supabase.from('jogadores').update({ status: 'ausente', mesa_atual: null }).in('status', ['espera', 'congelado']);
+        const snapshot = await db.collection('jogadores').where('status', 'in', ['espera', 'congelado']).get();
+        if (!snapshot.empty) {
+            const batch = db.batch();
+            snapshot.forEach(doc => { batch.update(doc.ref, { status: 'ausente', mesa_atual: null }); });
+            await batch.commit();
+        }
         res.json({ message: "Fila varrida com sucesso!" });
     } catch (err) { res.status(500).json({ error: "Erro interno." }); }
 });
 
+// ==========================================
+// 🎲 ROTAS: FILA E CADASTRO
+// ==========================================
 app.post('/login', pinLimiter, async (req, res) => {
     const { nome, pin } = req.body;
     if (!nome || !pin) return res.status(400).json({ error: "Dados incompletos." });
 
     try {
-        const { data: jogador } = await supabase.from('jogadores').select('pin').ilike('nome', nome.trim()).single();
-        if (!jogador) return res.status(404).json({ error: "Jogador não encontrado." });
+        const snapshot = await db.collection('jogadores').where('nome_busca', '==', nome.toLowerCase().trim()).limit(1).get();
+        if (snapshot.empty) return res.status(404).json({ error: "Jogador não encontrado." });
         
+        const jogador = snapshot.docs[0].data();
         if (String(jogador.pin) !== String(pin).trim()) {
             return res.status(401).json({ error: "PIN incorreto." });
         }
         
         res.json({ success: true, message: "Acesso liberado!" });
-    } catch (err) { 
-        res.status(500).json({ error: "Erro no servidor." }); 
-    }
+    } catch (err) { res.status(500).json({ error: "Erro no servidor." }); }
 });
-
-// ==========================================
-// 🎲 ROTAS: FILA, CADASTRO, VITÓRIA
-// ==========================================
 
 app.get('/fila', async (req, res) => {
     try {
-        const { data } = await supabase.from('jogadores').select('id, nome, avatar_url, status, mesa_atual, dupla_id, preferencia, created_at, ultimo_jogo_at, partidas_hoje');
-        if (!data) return res.json([]);
+        const snapshot = await db.collection('jogadores').get();
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        if (!data || data.length === 0) return res.json([]);
         
         const mesa1 = data.filter(j => j.status === 'mesa' && j.mesa_atual === 1);
         const mesa2 = data.filter(j => j.status === 'mesa' && j.mesa_atual === 2);
@@ -400,50 +430,65 @@ app.post('/cadastrar', async (req, res) => {
     if (!nome || !pin) return res.status(400).json({ error: "O nome e o PIN são obrigatórios!" });
 
     const nomeTratado = nome.trim();
+    const nomeBusca = nomeTratado.toLowerCase(); // CHAVE DA CORREÇÃO DE CASE SENSITIVE
     const agora = new Date().toISOString();
 
     try {
-        const { data: jogadorExistente } = await supabase.from('jogadores').select('*').ilike('nome', nomeTratado).maybeSingle();
+        const snapshot = await db.collection('jogadores').where('nome_busca', '==', nomeBusca).limit(1).get();
 
-        if (jogadorExistente) {
-            if (jogadorExistente.status === 'espera' || jogadorExistente.status === 'mesa') return res.status(400).json({ error: "Esse jogador já está na fila ou jogando!" });
-            const { data } = await supabase.from('jogadores').update({ status: 'espera', created_at: agora, pin: pin }).eq('id', jogadorExistente.id).select().single();
+        if (!snapshot.empty) {
+            const docRef = snapshot.docs[0].ref;
+            const jogadorExistente = snapshot.docs[0].data();
+
+            if (jogadorExistente.status === 'espera' || jogadorExistente.status === 'mesa') {
+                return res.status(400).json({ error: "Esse jogador já está na fila ou jogando!" });
+            }
+            
+            await docRef.update({ status: 'espera', created_at: agora, pin: pin });
+            const docAtualizado = await docRef.get();
             await alocarMesas(); 
-            return res.json(data);
+            return res.json({ id: docAtualizado.id, ...docAtualizado.data() });
         }
 
         const avatar_url = foto ? foto : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(nomeTratado)}`; 
-        const { data } = await supabase.from('jogadores').insert([{ 
-                nome: nomeTratado, pin: pin, status: 'espera', avatar_url: avatar_url, created_at: agora, 
-                partidas_hoje: 0, vitorias: 0, vitorias_semana: 0, partidas_jogadas: 0, partidas_semana: 0,
-                termos_aceitos: false // JÁ ENTRA NO BANCO COMO FALSO
-        }]).select().single();
+        const novoDocRef = db.collection('jogadores').doc();
+        const novoJogador = { 
+            id: novoDocRef.id,
+            nome: nomeTratado, 
+            nome_busca: nomeBusca, 
+            pin: pin, status: 'espera', avatar_url: avatar_url, created_at: agora, 
+            partidas_hoje: 0, vitorias: 0, vitorias_semana: 0, partidas_jogadas: 0, partidas_semana: 0,
+            termos_aceitos: false 
+        };
         
+        await novoDocRef.set(novoJogador);
         await alocarMesas();
-        res.json(data);
+        res.json(novoJogador);
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// 🔥 ATUALIZADO: AGORA TRAZ A INFORMAÇÃO SE O JOGADOR ACEITOU OS TERMOS
 app.get('/jogadores-cadastrados', async (req, res) => {
-    const { data } = await supabase.from('jogadores').select('id, nome, avatar_url, termos_aceitos').order('nome', { ascending: true });
-    res.json(data);
+    try {
+        const snapshot = await db.collection('jogadores').orderBy('nome', 'asc').get();
+        const data = snapshot.docs.map(doc => {
+            const d = doc.data();
+            return { id: doc.id, nome: d.nome, avatar_url: d.avatar_url, termos_aceitos: d.termos_aceitos };
+        });
+        res.json(data);
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/aceitar-termos', pinLimiter, async (req, res) => {
     const { id, pin } = req.body;
     try {
-        const { data: jogador } = await supabase.from('jogadores').select('pin').eq('id', id).single();
-        if (!jogador || String(jogador.pin) !== String(pin)) return res.status(401).json({ error: "PIN incorreto!" });
+        const docRef = db.collection('jogadores').doc(String(id));
+        const doc = await docRef.get();
+        if (!doc.exists) return res.status(404).json({ error: "Jogador não encontrado!" });
         
-        // Bate o carimbo exato do momento do aceite
-        const carimboDeTempo = new Date().toISOString(); 
-
-        await supabase.from('jogadores').update({ 
-            termos_aceitos: true,
-            data_aceite_termos: carimboDeTempo // 🔥 A prova irrefutável salva no banco
-        }).eq('id', id);
-
+        const jogador = doc.data();
+        if (String(jogador.pin) !== String(pin)) return res.status(401).json({ error: "PIN incorreto!" });
+        
+        await docRef.update({ termos_aceitos: true, data_aceite_termos: new Date().toISOString() });
         res.json({ message: "Termos aceitos!" });
     } catch (err) { res.status(500).json({ error: "Erro interno." }); }
 });
@@ -451,12 +496,16 @@ app.post('/aceitar-termos', pinLimiter, async (req, res) => {
 app.post('/entrar-fila', pinLimiter, async (req, res) => {
     const { nome, pin, preferencia } = req.body;
     try {
-        const { data: db } = await supabase.from('jogadores').select('*').ilike('nome', String(nome).trim()).single();
-        if (!db) return res.status(404).json({ error: "Jogador não encontrado!" });
-        if (String(db.pin) !== String(pin)) return res.status(401).json({ error: "PIN incorreto!" });        
-        if (db.status === 'espera' || db.status === 'mesa') return res.status(400).json({ error: "Você já está na fila ou na mesa!" });
+        const snapshot = await db.collection('jogadores').where('nome_busca', '==', String(nome).toLowerCase().trim()).limit(1).get();
+        if (snapshot.empty) return res.status(404).json({ error: "Jogador não encontrado!" });
+        
+        const docRef = snapshot.docs[0].ref;
+        const dbUser = snapshot.docs[0].data();
 
-        await supabase.from('jogadores').update({ status: 'espera', preferencia: preferencia || 'qualquer', created_at: new Date().toISOString() }).eq('id', db.id);
+        if (String(dbUser.pin) !== String(pin)) return res.status(401).json({ error: "PIN incorreto!" });        
+        if (dbUser.status === 'espera' || dbUser.status === 'mesa') return res.status(400).json({ error: "Você já está na fila ou na mesa!" });
+
+        await docRef.update({ status: 'espera', preferencia: preferencia || 'qualquer', created_at: new Date().toISOString() });
         await alocarMesas();
         res.json({ message: "OK" });
     } catch (error) { res.status(500).json({ error: "Falha de conexão." }); }
@@ -467,16 +516,25 @@ app.post('/entrar-fila-dupla', pinLimiter, async (req, res) => {
     if (nome1 === nome2) return res.status(400).json({ error: "Não pode fazer dupla consigo mesmo!" });
 
     try {
-        const { data: jogadores } = await supabase.from('jogadores').select('*').in('nome', [nome1.trim(), nome2.trim()]);
-        if (!jogadores || jogadores.length !== 2) return res.status(404).json({ error: "Jogadores não encontrados!" });
+        const snapshot1 = await db.collection('jogadores').where('nome_busca', '==', nome1.toLowerCase().trim()).limit(1).get();
+        const snapshot2 = await db.collection('jogadores').where('nome_busca', '==', nome2.toLowerCase().trim()).limit(1).get();
 
-        const j1 = jogadores.find(j => j.nome.toLowerCase() === nome1.trim().toLowerCase());
-        const j2 = jogadores.find(j => j.nome.toLowerCase() === nome2.trim().toLowerCase());
+        if (snapshot1.empty || snapshot2.empty) return res.status(404).json({ error: "Jogadores não encontrados!" });
+
+        const j1Doc = snapshot1.docs[0];
+        const j2Doc = snapshot2.docs[0];
+        const j1 = { id: j1Doc.id, ...j1Doc.data() };
+        const j2 = { id: j2Doc.id, ...j2Doc.data() };
 
         if (String(j1.pin) !== String(pin1) || String(j2.pin) !== String(pin2)) return res.status(401).json({ error: "PIN incorreto!" });
         if (['espera', 'mesa'].includes(j1.status) || ['espera', 'mesa'].includes(j2.status)) return res.status(400).json({ error: "Alguém da dupla já está na fila!" });
 
-        await supabase.from('jogadores').update({ status: 'espera', preferencia: preferencia || 'qualquer', created_at: new Date().toISOString(), dupla_id: crypto.randomUUID() }).in('id', [j1.id, j2.id]);
+        const duplaId = crypto.randomUUID();
+        const batch = db.batch();
+        batch.update(j1Doc.ref, { status: 'espera', preferencia: preferencia || 'qualquer', created_at: new Date().toISOString(), dupla_id: duplaId });
+        batch.update(j2Doc.ref, { status: 'espera', preferencia: preferencia || 'qualquer', created_at: new Date().toISOString(), dupla_id: duplaId });
+        await batch.commit();
+
         await alocarMesas();
         res.json({ message: "Dupla inserida com sucesso!" });
     } catch (err) { res.status(500).json({ error: "Erro interno no servidor" }); }
@@ -485,11 +543,13 @@ app.post('/entrar-fila-dupla', pinLimiter, async (req, res) => {
 app.delete('/fila/:id', pinLimiter, async (req, res) => {
     const senhaDigitada = req.headers['x-admin-key']; 
     try {
+        const docRef = db.collection('jogadores').doc(String(req.params.id));
+        const doc = await docRef.get();
+        
         if (senhaDigitada !== SENHA_ADMIN) {
-            const { data: jogador } = await supabase.from('jogadores').select('pin').eq('id', req.params.id).single();
-            if (!jogador || String(jogador.pin) !== String(senhaDigitada)) return res.status(401).json({ error: "PIN incorreto!" });
+            if (!doc.exists || String(doc.data().pin) !== String(senhaDigitada)) return res.status(401).json({ error: "PIN incorreto!" });
         }
-        await supabase.from('jogadores').update({ status: 'ausente', mesa_atual: null }).eq('id', req.params.id);
+        await docRef.update({ status: 'ausente', mesa_atual: null });
         await alocarMesas();
         res.json({ message: "OK" });
     } catch (err) { res.status(500).json({ error: "Erro interno." }); }
@@ -498,13 +558,16 @@ app.delete('/fila/:id', pinLimiter, async (req, res) => {
 app.patch('/fila/:id/congelar', pinLimiter, async (req, res) => {
     const authKey = req.headers['x-admin-key'];
     try {
-        const { data: jogador } = await supabase.from('jogadores').select('status, pin').eq('id', req.params.id).single();
-        if (!jogador) return res.status(404).json({ error: "Jogador não encontrado!" });
+        const docRef = db.collection('jogadores').doc(String(req.params.id));
+        const doc = await docRef.get();
+        if (!doc.exists) return res.status(404).json({ error: "Jogador não encontrado!" });
+        
+        const jogador = doc.data();
         if (String(authKey) !== SENHA_ADMIN && String(authKey) !== String(jogador.pin)) return res.status(401).json({ error: "PIN incorreto!" });
         if (jogador.status === 'mesa') return res.status(400).json({ error: "O jogador já está na mesa!" });
 
         const novoStatus = jogador.status === 'congelado' ? 'espera' : 'congelado';
-        await supabase.from('jogadores').update({ status: novoStatus }).eq('id', req.params.id);
+        await docRef.update({ status: novoStatus });
         
         res.json({ message: `Status alterado para ${novoStatus}!` });
     } catch (err) { res.status(500).json({ error: "Erro interno." }); }
@@ -513,17 +576,25 @@ app.patch('/fila/:id/congelar', pinLimiter, async (req, res) => {
 app.post('/formar-dupla', pinLimiter, async (req, res) => {
     const { jogador1_id, jogador2_id, pin1, pin2 } = req.body;
     try {
-        const { data: jogadores } = await supabase.from('jogadores').select('*').in('id', [jogador1_id, jogador2_id]);
-        if (!jogadores || jogadores.length !== 2) return res.status(400).json({ error: "Jogadores não encontrados." });
+        const doc1Ref = db.collection('jogadores').doc(String(jogador1_id));
+        const doc2Ref = db.collection('jogadores').doc(String(jogador2_id));
+        const [d1, d2] = await Promise.all([doc1Ref.get(), doc2Ref.get()]);
 
-        const j1 = jogadores.find(j => j.id === jogador1_id);
-        const j2 = jogadores.find(j => j.id === jogador2_id);
+        if (!d1.exists || !d2.exists) return res.status(400).json({ error: "Jogadores não encontrados." });
+
+        const j1 = d1.data();
+        const j2 = d2.data();
 
         if (String(j1.pin) !== String(pin1) || String(j2.pin) !== String(pin2)) return res.status(401).json({ error: "PIN incorreto!" });
         if (j1.status !== 'espera' || j2.status !== 'espera') return res.status(400).json({ error: "Ambos precisam estar na Fila." });
         if (j1.dupla_id || j2.dupla_id) return res.status(400).json({ error: "Um de vocês já está em uma dupla!" });
 
-        await supabase.from('jogadores').update({ dupla_id: crypto.randomUUID() }).in('id', [jogador1_id, jogador2_id]);
+        const duplaId = crypto.randomUUID();
+        const batch = db.batch();
+        batch.update(doc1Ref, { dupla_id: duplaId });
+        batch.update(doc2Ref, { dupla_id: duplaId });
+        await batch.commit();
+
         res.json({ message: "Dupla formada!" });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -531,32 +602,39 @@ app.post('/formar-dupla', pinLimiter, async (req, res) => {
 app.post('/desfazer-dupla', pinLimiter, async (req, res) => {
     const { jogador_id, pin } = req.body;
     try {
-        const { data: jogador } = await supabase.from('jogadores').select('*').eq('id', jogador_id).single();
-        if (!jogador || (String(jogador.pin) !== String(pin) && String(pin) !== SENHA_ADMIN)) return res.status(401).json({ error: "PIN incorreto!" });
+        const docRef = db.collection('jogadores').doc(String(jogador_id));
+        const doc = await docRef.get();
+        if (!doc.exists) return res.status(400).json({ error: "Jogador não encontrado." });
+        
+        const jogador = doc.data();
+        if ((String(jogador.pin) !== String(pin) && String(pin) !== SENHA_ADMIN)) return res.status(401).json({ error: "PIN incorreto!" });
         if (!jogador.dupla_id) return res.status(400).json({ error: "Não está em nenhuma dupla." });
 
-        await supabase.from('jogadores').update({ dupla_id: null }).eq('dupla_id', jogador.dupla_id);
+        const snapshot = await db.collection('jogadores').where('dupla_id', '==', jogador.dupla_id).get();
+        const batch = db.batch();
+        snapshot.forEach(item => {
+            batch.update(item.ref, { dupla_id: null });
+        });
+        await batch.commit();
+
         res.json({ message: "Dupla desfeita." });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-
-
-
-// 🔥 ROTA DE VITÓRIA DEFINITIVA E BLINDADA
+// ==========================================
+// 🔥 ROTA DE VITÓRIA (COM FILA SEGURA)
+// ==========================================
 let travaVitoria = Promise.resolve();
+
 app.post('/vitoria', (req, res) => {
-    travaVitoria = travaVitoria.then(async () => {
+    const executarVitoria = async () => {
         const { vencedores, mesaId, quemFicaId, filaReal } = req.body;
         try {
-            const { data: mesa } = await supabase.from('jogadores').select('*').eq('status', 'mesa').eq('mesa_atual', mesaId);
-            if (!mesa || mesa.length === 0) {
-                return res.status(400).json({ error: "Nenhum jogador encontrado nesta mesa." });
-            }
+            const snapshotMesa = await db.collection('jogadores').where('status', '==', 'mesa').where('mesa_atual', '==', Number(mesaId)).get();
+            const mesa = snapshotMesa.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-            // =========================================
-            // 🔒 REGRA DAS 22:00 E A "SADEIRA"
-            // =========================================
+            if (!mesa || mesa.length === 0) return res.status(400).json({ error: "Nenhum jogador encontrado nesta mesa." });
+
             const baseTime = new Date();
             const formatter = new Intl.DateTimeFormat('en-US', {
                 timeZone: 'America/Bahia',
@@ -569,46 +647,32 @@ app.post('/vitoria', (req, res) => {
             
             const horaAtualBahia = parseInt(getPart('hour'), 10);
 
-            // Verifica se está no horário proibido (entre 22h e 05h da manhã)
             if (horaAtualBahia >= 22 || horaAtualBahia < 5) {
                 const ano = getPart('year');
                 const mes = getPart('month');
                 const dia = getPart('day');
                 
-                // Monta o limite exato de 22:00 no fuso de Salvador
                 let dataLimiteBahia = new Date(`${ano}-${mes}-${dia}T22:00:00-03:00`);
-                
-                // Se já for madrugada (ex: 01h), o limite de 22h se refere ao dia de ontem
-                if (horaAtualBahia < 5) {
-                    dataLimiteBahia.setDate(dataLimiteBahia.getDate() - 1);
-                }
+                if (horaAtualBahia < 5) dataLimiteBahia.setDate(dataLimiteBahia.getDate() - 1);
 
-                // Verifica se ALGUÉM da mesa sentou DEPOIS das 22h. 
-                // Se sim, significa que eles já jogaram a sadeira ou entraram na mesa fora do horário.
                 const mesaInvalida = mesa.some(j => new Date(j.created_at) >= dataLimiteBahia);
-
-                if (mesaInvalida) {
-                    return res.status(403).json({ error: "PAF fechado! Já passou das 22h e a sadeira desta mesa já foi registrada." });
-                }
+                if (mesaInvalida) return res.status(403).json({ error: "PAF fechado! Já passou das 22h e a sadeira desta mesa já foi registrada." });
             }
-            // =========================================
 
             let idsSair = [];
             const countFila = Number(filaReal) || 0;
 
-            if (countFila >= 2) {
-                idsSair = mesa.filter(j => !vencedores.includes(j.id)).map(j => j.id);
-            } else if (countFila === 1) {
-                idsSair = mesa.filter(j => !vencedores.includes(j.id) && j.id !== quemFicaId).map(j => j.id);
-            } else {
-                idsSair = [];
-            }
+            if (countFila >= 2) idsSair = mesa.filter(j => !vencedores.includes(j.id)).map(j => j.id);
+            else if (countFila === 1) idsSair = mesa.filter(j => !vencedores.includes(j.id) && j.id !== quemFicaId).map(j => j.id);
 
             const duplasNaMesa = [...new Set(mesa.map(j => j.dupla_id).filter(id => id !== null))];
             for (const d_id of duplasNaMesa) {
                 const parceiros = mesa.filter(j => j.dupla_id === d_id);
                 if (parceiros.length === 2 && (idsSair.includes(parceiros[0].id) !== idsSair.includes(parceiros[1].id))) {
-                    await supabase.from('jogadores').update({ dupla_id: null }).eq('dupla_id', d_id);
+                    const snapDupla = await db.collection('jogadores').where('dupla_id', '==', d_id).get();
+                    const batchDupla = db.batch();
+                    snapDupla.forEach(item => batchDupla.update(item.ref, { dupla_id: null }));
+                    await batchDupla.commit();
                 }
             }
 
@@ -616,31 +680,27 @@ app.post('/vitoria', (req, res) => {
             let atrasoFilaMs = 0;
             
             try {
-                await supabase.from('historico_partidas').insert([{
-                    id: crypto.randomUUID(), mesa_id: mesaId,
+                await db.collection('historico_partidas').doc(crypto.randomUUID()).set({
+                    mesa_id: Number(mesaId),
                     vencedor1_id: vencedores[0] || null, vencedor2_id: vencedores[1] || null,
                     perdedor1_id: perdedores[0] || null, perdedor2_id: perdedores[1] || null, 
                     data_partida: baseTime.toISOString()
-                }]);
+                });
             } catch(e) {}
 
+            const batchJogadores = db.batch();
             for (const jogador of mesa) {
+                const docRef = db.collection('jogadores').doc(String(jogador.id));
                 const vaiSair = idsSair.includes(jogador.id);
                 const isVencedor = vencedores.includes(jogador.id); 
                 const minutosNaMesa = Math.floor((baseTime.getTime() - new Date(jogador.created_at).getTime()) / 60000);
-
-                // =========================================
-                // 🛡️ BLINDAGEM DO SÁBADO (100% à prova de falhas)
-                // =========================================
-                const diaSemanaBahia = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Bahia', weekday: 'short' }).format(new Date());
-                const isSabado = (diaSemanaBahia === 'Sat');
+                const isSabado = (new Intl.DateTimeFormat('en-US', { timeZone: 'America/Bahia', weekday: 'short' }).format(new Date()) === 'Sat');
 
                 let updateData = {
                     ultimo_jogo_at: baseTime.toISOString(),
                     tempo_sentado: (jogador.tempo_sentado || 0) + (minutosNaMesa > 0 ? minutosNaMesa : 15) 
                 };
 
-                // Se NÃO for sábado lógico, atualiza os contadores oficiais do semestre/semana
                 if (!isSabado) {
                     updateData.partidas_hoje = (jogador.partidas_hoje || 0) + 1;
                     updateData.partidas_jogadas = (jogador.partidas_jogadas || 0) + 1; 
@@ -649,44 +709,58 @@ app.post('/vitoria', (req, res) => {
                     updateData.vitorias_semana = isVencedor ? (jogador.vitorias_semana || 0) + 1 : (jogador.vitorias_semana || 0);
                 }
                 if (vaiSair) {
-                    updateData.status = 'espera'; // 🚨 CORRIGIDO PARA 'espera' PARA NÃO SUMIR!
+                    updateData.status = 'espera'; 
                     updateData.mesa_atual = null;
                     updateData.created_at = new Date(baseTime.getTime() + atrasoFilaMs).toISOString(); 
                     atrasoFilaMs += 1000; 
-                } else { 
-                    updateData.created_at = baseTime.toISOString(); 
-                }
+                } else { updateData.created_at = baseTime.toISOString(); }
 
-                await supabase.from('jogadores').update(updateData).eq('id', jogador.id);
+                batchJogadores.update(docRef, updateData);
             }
+            await batchJogadores.commit();
             
-            // 🚨 ESCUDO CONTRA O ERRO 500: Impede que a tela trave!
-            try { await alocarMesas(); } catch (e) { console.error(e); }
-            try { await supabase.from('apostas_ao_vivo').delete().eq('mesa_id', mesaId); } catch (e) {}
+            try { await alocarMesas(); } catch (e) {}
+            try {
+                const snapApostas = await db.collection('apostas_ao_vivo').where('mesa_id', '==', Number(mesaId)).get();
+                if(!snapApostas.empty) {
+                    const batchApostas = db.batch();
+                    snapApostas.forEach(item => batchApostas.delete(item.ref));
+                    await batchApostas.commit();
+                }
+            } catch (e) {}
 
             res.json({ message: "Mesa processada com sucesso!" });
         } catch (err) { 
             console.error("Erro interno na rota de vitoria:", err);
             res.status(500).json({ error: "Erro interno ao processar a vitória." }); 
         }
-    }).catch(err => { 
-        res.status(500).json({ error: "Erro crítico na fila de execução." }); 
-    });
+    };
 
+    // A fila encadeia a execução garantindo que falhas não travem o app
+    travaVitoria = travaVitoria.then(executarVitoria).catch(err => {
+        console.error("Fila recuperada de falha:", err);
+    });
 });
+
+// ==========================================
+// 🏆 ROTAS: ESTATÍSTICAS E RANKING
+// ==========================================
 app.get('/estatisticas-gerais', async (req, res) => {
     try {
-        const { data: jogadores } = await supabase.from('jogadores').select('id, nome, partidas_jogadas');
+        const snapJogadores = await db.collection('jogadores').get();
         const mapNomes = {}; let maisPartidas = { valor: 0, dono: "Ninguém" };
-        jogadores.forEach(j => {
-            mapNomes[j.id] = j.nome;
+        
+        snapJogadores.docs.forEach(doc => {
+            const j = doc.data();
+            mapNomes[doc.id] = j.nome;
             if ((j.partidas_jogadas || 0) > maisPartidas.valor) { maisPartidas = { valor: j.partidas_jogadas, dono: j.nome }; }
         });
 
-        const { data: historico } = await supabase.from('historico_partidas').select('vencedor1_id, vencedor2_id, perdedor1_id, perdedor2_id').order('data_partida', { ascending: true });
+        const snapHistorico = await db.collection('historico_partidas').orderBy('data_partida', 'asc').get();
         let duplaCounts = {}; let streaks = {};
 
-        historico.forEach(p => {
+        snapHistorico.docs.forEach(doc => {
+            const p = doc.data();
             const v1 = p.vencedor1_id; const v2 = p.vencedor2_id;
             const d1 = p.perdedor1_id; const d2 = p.perdedor2_id;
 
@@ -737,13 +811,10 @@ app.get('/estatisticas-gerais', async (req, res) => {
     } catch (error) { res.status(500).json({ error: "Erro ao calcular estatísticas gerais." }); }
 });
 
-// ==========================================
-// 🏆 ROTAS: RANKING E DETALHES
-// ==========================================
-
 app.get('/ranking', async (req, res) => {
     try {
-        const { data } = await supabase.from('jogadores').select('id, nome, vitorias, vitorias_semana, partidas_jogadas, partidas_semana, avatar_url, tempo_sentado, tempo_espera').gt('vitorias', 0); 
+        const snapshot = await db.collection('jogadores').where('vitorias', '>', 0).get();
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         res.json(data || []);
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -753,8 +824,12 @@ app.get('/estatisticas-detalhadas/:id', async (req, res) => {
     if (!id) return res.status(400).json({ error: "ID não fornecido" });
 
     try {
-        const { data: partidas } = await supabase.from('historico_partidas').select('*')
-            .or(`vencedor1_id.eq.${id},vencedor2_id.eq.${id},perdedor1_id.eq.${id},perdedor2_id.eq.${id}`).order('data_partida', { ascending: true });
+        const snapPartidas = await db.collection('historico_partidas').orderBy('data_partida', 'asc').get();
+        const todasPartidas = snapPartidas.docs.map(doc => doc.data());
+        
+        const partidas = todasPartidas.filter(p => 
+            p.vencedor1_id === id || p.vencedor2_id === id || p.perdedor1_id === id || p.perdedor2_id === id
+        );
 
         if (!partidas || partidas.length === 0) {
             return res.json({
@@ -806,7 +881,7 @@ app.get('/estatisticas-detalhadas/:id', async (req, res) => {
         };
 
         res.json({
-            maiorStreakV, maiorStreakD, mesaFavorita: acharMaior(mesas).id || "1",
+            maiorStreakV, maiorStreakD, mesaFavorita: String(acharMaior(mesas).id || "1"),
             carrascoId: acharMaior(rivais).id, qtdCarrasco: acharMaior(rivais).qtd,
             freguesId: acharMaior(fregueses).id, qtdFregues: acharMaior(fregueses).qtd,
             melhorParceiroId: acharMaior(parceirosV).id, qtdMelhorParceiro: acharMaior(parceirosV).qtd,
@@ -818,47 +893,63 @@ app.get('/estatisticas-detalhadas/:id', async (req, res) => {
 
 app.post('/salvar-top10', pinLimiter, async (req, res) => {
     const { nome, pin, listaIds } = req.body;
-    const { data: jogador } = await supabase.from('jogadores').select('id, pin').ilike('nome', nome).single();
-    if (!jogador || String(jogador.pin) !== String(pin)) return res.status(401).json({ error: 'Acesso não autorizado.' });
+    const snapshot = await db.collection('jogadores').where('nome_busca', '==', nome.toLowerCase().trim()).limit(1).get();
+    if (snapshot.empty) return res.status(401).json({ error: 'Acesso não autorizado.' });
+
+    const jogador = snapshot.docs[0].data();
+    const jogadorId = snapshot.docs[0].id;
+
+    if (String(jogador.pin) !== String(pin)) return res.status(401).json({ error: 'Acesso não autorizado.' });
 
     try {
-        const { error } = await supabase.from('top10_listas').upsert({
-            dono_id: jogador.id, lista_ids: listaIds, atualizado_em: new Date()
-        }, { onConflict: 'dono_id' });
-        if (error) throw error;
+        await db.collection('top10_listas').doc(String(jogadorId)).set({
+            dono_id: jogadorId, lista_ids: listaIds, atualizado_em: new Date().toISOString()
+        }, { merge: true });
+        
         res.json({ message: 'Top 10 guardado com sucesso!' });
     } catch (err) { res.status(500).json({ error: 'Erro ao guardar o Top 10.' }); }
 });
 
 app.get('/ver-top10/:id', async (req, res) => {
     try {
-        const { data: top10 } = await supabase.from('top10_listas').select('lista_ids').eq('dono_id', req.params.id).single();
-        if (!top10 || !top10.lista_ids) return res.json([]);
+        const docRef = await db.collection('top10_listas').doc(String(req.params.id)).get();
+        if (!docRef.exists || !docRef.data().lista_ids) return res.json([]);
 
-        const { data: jogadores } = await supabase.from('jogadores').select('id, nome, avatar_url, vitorias').in('id', top10.lista_ids);
-        const listaOrdenada = top10.lista_ids.map(id => jogadores.find(j => j.id === id)).filter(Boolean);
+        const listaIds = docRef.data().lista_ids;
+        const arrayBusca = listaIds.length > 0 ? listaIds : ['__none__'];
+        const snapshot = await db.collection('jogadores').where(FieldPath.documentId(), 'in', arrayBusca).get();
+        
+        const jogadores = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const listaOrdenada = listaIds.map(id => jogadores.find(j => j.id === id)).filter(Boolean);
         res.json(listaOrdenada);
-    } catch (err) { res.status(500).json({ error: 'Erro Top 10.' }); }
+    } catch (err) { 
+        res.status(500).json({ error: 'Erro Top 10.' }); 
+    }
 });
 
 app.get('/top10-global', async (req, res) => {
     try {
-        const { data: listas } = await supabase.from('top10_listas').select('lista_ids');
+        const snapshot = await db.collection('top10_listas').get();
         let contagemVotos = {};
-        if (listas) {
-            listas.forEach(l => {
+        
+        snapshot.forEach(doc => {
+            const l = doc.data();
+            if (l.lista_ids) {
                 l.lista_ids.forEach((idJogador, index) => {
                     if (!contagemVotos[idJogador]) contagemVotos[idJogador] = 0;
                     contagemVotos[idJogador] += (10 - index); 
                 });
-            });
-        }
+            }
+        });
+
         const idsMaisVotados = Object.keys(contagemVotos).sort((a, b) => contagemVotos[b] - contagemVotos[a]).slice(0, 10);
         if (idsMaisVotados.length === 0) return res.json([]);
 
-        const { data: jogadores } = await supabase.from('jogadores').select('id, nome, avatar_url').in('id', idsMaisVotados);
+        const snapJogadores = await db.collection('jogadores').get();
+        const todosJogadores = snapJogadores.docs.map(d => ({ id: d.id, ...d.data() }));
+
         const top10Final = idsMaisVotados.map((id, index) => {
-            const j = jogadores.find(j => String(j.id) === String(id));
+            const j = todosJogadores.find(j => String(j.id) === String(id));
             return j ? { ...j, posicao: index + 1, votos: contagemVotos[id] } : null;
         }).filter(Boolean);
 
@@ -869,18 +960,23 @@ app.get('/top10-global', async (req, res) => {
 // ==========================================
 // 🛠️ OUTRAS ROTAS (EXTRAS / UTEIS)
 // ==========================================
-
 app.post('/votar', async (req, res) => {
   const { mesaId, apostadorNome, duplaEscolhida } = req.body;
   try {
-    await supabase.from('apostas_ao_vivo').insert([{ mesa_id: mesaId, apostador_nome: apostadorNome, dupla_escolhida: duplaEscolhida }]);
+    await db.collection('apostas_ao_vivo').add({ 
+        mesa_id: Number(mesaId), 
+        apostador_nome: apostadorNome, 
+        dupla_escolhida: duplaEscolhida,
+        criado_em: new Date().toISOString()
+    });
     res.json({ sucesso: true, mensagem: 'Aposta cravada com sucesso!' });
   } catch (error) { res.status(500).json({ erro: 'Erro apostas.' }); }
 });
 
 app.get('/apostas', async (req, res) => {
   try {
-    const { data } = await supabase.from('apostas_ao_vivo').select('mesa_id, dupla_escolhida');
+    const snapshot = await db.collection('apostas_ao_vivo').get();
+    const data = snapshot.docs.map(doc => ({ mesa_id: doc.data().mesa_id, dupla_escolhida: doc.data().dupla_escolhida }));
     res.json(data);
   } catch (error) { res.status(500).json({ erro: 'Erro apostas.' }); }
 });
@@ -890,10 +986,14 @@ app.post('/atualizar-foto', pinLimiter, async (req, res) => {
     if (!nome || !pin || !foto) return res.status(400).json({ error: "Faltam dados!" });
 
     try {
-        const { data: jogador } = await supabase.from('jogadores').select('*').ilike('nome', nome.trim()).single();
-        if (!jogador || String(jogador.pin) !== String(pin)) return res.status(401).json({ error: "Senha incorreta!" });
+        const snapshot = await db.collection('jogadores').where('nome_busca', '==', nome.toLowerCase().trim()).limit(1).get();
+        if (snapshot.empty) return res.status(401).json({ error: "Senha incorreta!" });
 
-        await supabase.from('jogadores').update({ avatar_url: foto }).eq('id', jogador.id);
+        const docRef = snapshot.docs[0].ref;
+        const jogador = snapshot.docs[0].data();
+        if (String(jogador.pin) !== String(pin)) return res.status(401).json({ error: "Senha incorreta!" });
+
+        await docRef.update({ avatar_url: foto });
         res.json({ message: "Foto atualizada!" });
     } catch (err) { res.status(500).json({ error: "Erro foto." }); }
 });
@@ -901,7 +1001,7 @@ app.post('/atualizar-foto', pinLimiter, async (req, res) => {
 app.post('/salvar-inscricao-push', async (req, res) => {
     const { jogadorId, subscription } = req.body;
     try {
-        await supabase.from('jogadores').update({ push_sub: subscription }).eq('id', jogadorId);
+        await db.collection('jogadores').doc(String(jogadorId)).update({ push_sub: subscription });
         res.status(200).json({ message: "Celular conectado via Navegador!" });
     } catch (err) { res.status(500).json({ error: "Erro push." }); }
 });
@@ -909,7 +1009,7 @@ app.post('/salvar-inscricao-push', async (req, res) => {
 app.post('/salvar-token-push', async (req, res) => {
     const { id, token } = req.body;
     try {
-        await supabase.from('jogadores').update({ push_token: token }).eq('id', id);
+        await db.collection('jogadores').doc(String(id)).update({ push_token: token });
         res.status(200).json({ message: "Celular conectado ao Firebase!" });
     } catch (err) { res.status(500).json({ error: "Erro ao salvar token de push." }); }
 });
@@ -918,50 +1018,53 @@ app.post('/sac/denuncia', async (req, res) => {
     const { mensagem } = req.body;
     if (!mensagem || mensagem.trim() === '') return res.status(400).json({ error: "Vazio não rola." });
     try {
-        await supabase.from('denuncias_sac').insert([{ mensagem: mensagem }]);
+        await db.collection('denuncias_sac').add({ mensagem: mensagem, criado_em: new Date().toISOString() });
         res.json({ message: "Mensagem enviada! O sigilo é absoluto." });
     } catch (err) { res.status(500).json({ error: "Erro SAC." }); }
 });
 
 app.get('/historico-recente', async (req, res) => {
     try {
-        const { data } = await supabase.from('historico_partidas').select('*').order('data_partida', { ascending: false }).limit(5); 
+        const snapshot = await db.collection('historico_partidas').orderBy('data_partida', 'desc').limit(5).get();
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         res.json(data);
-    } catch (err) { res.status(500).json({ error: "Erro histórico" }); }
+    } catch (err) { 
+        try {
+            const snapshot = await db.collection('historico_partidas').get();
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            data.sort((a, b) => new Date(b.data_partida) - new Date(a.data_partida));
+            res.json(data.slice(0, 5));
+        } catch(e) {
+            res.status(500).json({ error: "Erro histórico" }); 
+        }
+    }
 }); 
 
 app.post('/atualizar-perfil', async (req, res) => {
     const { id, nome, pin, foto } = req.body;
-
-    if (!id || !nome || !pin) {
-        return res.status(400).json({ error: "Dados incompletos para atualizar perfil." });
-    }
+    if (!id || !nome || !pin) return res.status(400).json({ error: "Dados incompletos para atualizar perfil." });
 
     try {
-        const { error } = await supabase
-            .from('jogadores')
-            .update({ 
-                nome: nome, 
-                avatar_url: foto 
-            })
-            .eq('id', id)
-            .eq('pin', pin); 
-
-        if (error) {
-            throw new Error(error.message);
+        const docRef = db.collection('jogadores').doc(String(id));
+        const doc = await docRef.get();
+        if (!doc.exists || String(doc.data().pin) !== String(pin)) {
+            throw new Error("PIN incorreto ou usuário não encontrado.");
         }
 
-        res.json({ message: "Perfil atualizado com sucesso no banco de dados!" });
+        await docRef.update({ 
+            nome: nome, 
+            nome_busca: nome.toLowerCase().trim(),
+            avatar_url: foto 
+        });
 
-    } catch (err) {
-        res.status(500).json({ error: "Erro interno ao atualizar perfil." });
-    }
+        res.json({ message: "Perfil atualizado com sucesso no banco de dados!" });
+    } catch (err) { res.status(500).json({ error: "Erro interno ao atualizar perfil." }); }
 });
 
 app.get('/configuracoes', async (req, res) => {
     try {
-        const { data } = await supabase.from('configuracoes_app').select('*').eq('id', 1).single();
-        res.json(data || {});
+        const docRef = await db.collection('configuracoes_app').doc('1').get();
+        res.json(docRef.exists ? docRef.data() : {});
     } catch (err) { res.status(500).json({ error: "Erro ao buscar as configurações." }); }
 });
 
@@ -972,13 +1075,14 @@ app.post('/admin/configuracoes', async (req, res) => {
     const { top1_nome, top1_frase, top1_foto, top1_spotify, dica_nome, dica_foto, dica_titulo, dica_texto } = req.body;
     
     try {
-        await supabase.from('configuracoes_app').update({
+        await db.collection('configuracoes_app').doc('1').set({
             top1_nome, top1_frase, top1_foto, top1_spotify, dica_nome, dica_foto, dica_titulo, dica_texto
-        }).eq('id', 1);
+        }, { merge: true });
         
         res.json({ message: "Aplicativo atualizado para todos os jogadores!" });
     } catch (err) { res.status(500).json({ error: "Erro ao salvar as configurações." }); }
 });
+
 app.get('/ranking-sabado', async (req, res) => {
     try {
         const hoje = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Bahia' }));
@@ -995,13 +1099,12 @@ app.get('/ranking-sabado', async (req, res) => {
         const start = `${dataFiltro}T00:00:00-03:00`;
         const end = `${dataFiltro}T23:59:59-03:00`;
 
-        const { data: partidas, error } = await supabase
-            .from('historico_partidas')
-            .select('*')
-            .gte('data_partida', start)
-            .lte('data_partida', end);
+        const snapPartidas = await db.collection('historico_partidas')
+            .where('data_partida', '>=', start)
+            .where('data_partida', '<=', end)
+            .get();
 
-        if (error) throw error;
+        const partidas = snapPartidas.docs.map(doc => doc.data());
         if (!partidas || partidas.length === 0) return res.json([]);
 
         const pontos = {};
@@ -1013,10 +1116,13 @@ app.get('/ranking-sabado', async (req, res) => {
         });
 
         const ids = Object.keys(pontos);
-        const { data: jogadores } = await supabase.from('jogadores').select('id, nome, avatar_url').in('id', ids);
+        if (ids.length === 0) return res.json([]);
+
+        const snapJogadores = await db.collection('jogadores').get();
+        const todosJogadores = snapJogadores.docs.map(d => ({ id: d.id, ...d.data() }));
 
         const ranking = ids.map(id => {
-            const j = jogadores.find(x => String(x.id) === String(id));
+            const j = todosJogadores.find(x => String(x.id) === String(id));
             return {
                 id,
                 nome: j ? j.nome : 'Anônimo',
