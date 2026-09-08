@@ -22,7 +22,7 @@ initializeApp({
 const db = getFirestore();
 
 // ==========================================
-// ⚙️ 2. CONFIGURAÇÃO DO SERVIDOR EXPRESS
+// ⚙️ 2. CONFIGURAÇÃO DO SERVIDOR EXPRESS juro
 // ==========================================
 const app = express();
 app.use(compression());
