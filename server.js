@@ -32,11 +32,7 @@ webpush.setVapidDetails(
     VAPID_PRIVATE_KEY
 );
 
-// 🔔 2. CONFIGURAÇÃO DO FIREBASE (APK NATIVO)
-const serviceAccount = require("./firebase-chave.json"); 
-initializeApp({
-    credential: cert(serviceAccount)
-});
+
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, max: 10, message: { error: "Muitas tentativas. Tente novamente em 15 minutos." }
