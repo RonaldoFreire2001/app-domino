@@ -179,9 +179,9 @@ async function alocarMesas() {
         tentarNovamente = false; 
         try {
             const { data: jogando } = await supabase.from('jogadores').select('*').eq('status', 'mesa');
-            let mesa1 = jogando ? jogando.filter(j => j.mesa_atual === 1) : [];
-            let mesa2 = jogando ? jogando.filter(j => j.mesa_atual === 2) : [];
-            let mesa3 = jogando ? jogando.filter(j => j.mesa_atual === 3) : [];
+           let mesa1 = jogando ? jogando.filter(j => Number(j.mesa_atual) === 1) : [];
+            let mesa2 = jogando ? jogando.filter(j => Number(j.mesa_atual) === 2) : [];
+            let mesa3 = jogando ? jogando.filter(j => Number(j.mesa_atual) === 3) : [];
 
             const { data: filaBruta } = await supabase.from('jogadores').select('*').eq('status', 'espera');
             let espera = filaBruta || [];
@@ -381,9 +381,9 @@ app.get('/fila', async (req, res) => {
   .in('status', ['espera', 'congelado', 'mesa']);
         if (!data) return res.json([]);
         
-        const mesa1 = data.filter(j => j.status === 'mesa' && j.mesa_atual === 1);
-        const mesa2 = data.filter(j => j.status === 'mesa' && j.mesa_atual === 2);
-        const mesa3 = data.filter(j => j.status === 'mesa' && j.mesa_atual === 3); 
+       const mesa1 = data.filter(j => j.status === 'mesa' && Number(j.mesa_atual) === 1);
+const mesa2 = data.filter(j => j.status === 'mesa' && Number(j.mesa_atual) === 2);
+const mesa3 = data.filter(j => j.status === 'mesa' && Number(j.mesa_atual) === 3);
         const esperando = data.filter(j => j.status === 'espera' || j.status === 'congelado');
 
         res.json([...ordenarFila(mesa1), ...ordenarFila(mesa2), ...ordenarFila(mesa3), ...ordenarFila(esperando)]);

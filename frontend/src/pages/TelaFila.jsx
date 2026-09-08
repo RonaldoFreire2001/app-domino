@@ -582,9 +582,9 @@ export default function TelaFila() {
 
   const espera = (fila || []).filter(j => String(j.status).toLowerCase() === 'espera' || String(j.status).toLowerCase() === 'congelado');  
   const jogando = fila.filter(j => j.status === 'mesa');
-  const mesa1 = jogando.filter(j => j.mesa_atual === 1);
-  const mesa2 = jogando.filter(j => j.mesa_atual === 2);
-  const mesa3 = jogando.filter(j => j.mesa_atual === 3);
+const mesa1 = jogando.filter(j => Number(j.mesa_atual) === 1);
+const mesa2 = jogando.filter(j => Number(j.mesa_atual) === 2);
+const mesa3 = jogando.filter(j => Number(j.mesa_atual) === 3);
   const jogandoNaMesaAtual = mesaVitoria === 1 ? mesa1 : mesaVitoria === 2 ? mesa2 : mesa3;
 
   const confirmarVitoria = () => {
