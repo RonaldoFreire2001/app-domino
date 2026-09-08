@@ -62,7 +62,7 @@ export default function MenuInferior() {
           <Info size={24} strokeWidth={location.pathname === '/ajuda' ? 2.5 : 2} />
           <span style={{ fontSize: '11px', fontWeight: '600', letterSpacing: '0.5px' }}>Ajuda</span>
         </MotionLink>
-
+          ///ffddjdj
         <MotionLink to="/perfil" style={getStyle('/perfil')} whileTap={{ scale: 0.85 }} transition={{ type: "spring", stiffness: 400, damping: 17 }}>
           <User size={24} strokeWidth={location.pathname === '/perfil' ? 2.5 : 2} />
           <span style={{ fontSize: '11px', fontWeight: '600', letterSpacing: '0.5px' }}>Perfil</span>
