@@ -365,11 +365,11 @@ export default function TelaFila() {
     // Roda tudo na primeira vez que o componente é montado
     vibrarLeve();
     carregarDadosEstaticos();
-    carregarFila();
+    carregarFilaETudo();
 
     // Roda APENAS a fila leve a cada 30 segundos
     const intervalo = setInterval(() => { 
-      carregarFila(); 
+      carregarFilaETudo(); 
     }, 30000);
     
     return () => clearInterval(intervalo);
