@@ -325,7 +325,7 @@ export default function TelaFila() {
   }, [arrastando, relativo]);
 
   // 1. DADOS LEVES: Atualizam a cada 30 segundos
-  const carregarFila = async () => {
+  const carregarFilaETudo = async () => {
     try {
       const resFila = await axios.get(`${API_URL}/fila`);
       setFila(resFila.data);
