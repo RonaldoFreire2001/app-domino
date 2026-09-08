@@ -199,7 +199,7 @@ export default function TelaAjuda() {
           </CardAjuda>
         </div>
       </div>
-
+         // RODAPÉ COM DOWNLOAD E SAC
       <div style={{ textAlign: 'center', marginTop: '50px' }}>
         <p style={{ margin: '0 0 25px 0', color: '#64748B', fontSize: '0.85rem', fontStyle: 'italic', fontWeight: '600' }}>"A resenha é livre, o respeito é obrigatório."</p>
         

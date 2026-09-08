@@ -12,7 +12,7 @@ import TelaPerfil from './pages/TelaPerfil';
 import TelaAjuda from './pages/TelaAjuda';
 
 export default function App() {
-  
+  ///oii testanto aqui
   useEffect(() => {
     const configurarBarrasNativas = async () => {
       if (Capacitor.isNativePlatform()) {
