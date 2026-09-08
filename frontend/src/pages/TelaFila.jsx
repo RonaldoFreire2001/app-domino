@@ -324,9 +324,9 @@ export default function TelaFila() {
     return () => { window.removeEventListener('mousemove', moverSelo); window.removeEventListener('mouseup', pararArrasto); window.removeEventListener('touchmove', moverSelo); window.removeEventListener('touchend', pararArrasto); };
   }, [arrastando, relativo]);
 
-  const carregarFilaETudo = async () => {
+  // 1. DADOS LEVES: Atualizam a cada 30 segundos
+  const carregarFila = async () => {
     try {
-      vibrarLeve();
       const resFila = await axios.get(`${API_URL}/fila`);
       setFila(resFila.data);
 
@@ -344,19 +344,34 @@ export default function TelaFila() {
         posicaoAnteriorRef.current = meuIndex !== -1 ? meuIndex : null;
       }
 
-      const resUsers = await axios.get(`${API_URL}/jogadores-cadastrados`);
-      setUsuariosCadastrados(resUsers.data || []);
       const resHist = await axios.get(`${API_URL}/historico-recente?t=${new Date().getTime()}`);
       setHistoricoRecente(resHist.data || []);
-      const resConfig = await axios.get(`${API_URL}/configuracoes`);
-      setConfigApp(resConfig.data);
     } catch (e) {} 
     finally { setCarregandoDados(false); }
   };
 
+  // 2. DADOS PESADOS: Carregam só na abertura do app
+  const carregarDadosEstaticos = async () => {
+    try {
+      const resUsers = await axios.get(`${API_URL}/jogadores-cadastrados`);
+      setUsuariosCadastrados(resUsers.data || []);
+      
+      const resConfig = await axios.get(`${API_URL}/configuracoes`);
+      setConfigApp(resConfig.data);
+    } catch (e) {}
+  };
+
   useEffect(() => {
-    carregarFilaETudo();
-    const intervalo = setInterval(() => { carregarFilaETudo(); }, 30000);
+    // Roda tudo na primeira vez que o componente é montado
+    vibrarLeve();
+    carregarDadosEstaticos();
+    carregarFila();
+
+    // Roda APENAS a fila leve a cada 30 segundos
+    const intervalo = setInterval(() => { 
+      carregarFila(); 
+    }, 30000);
+    
     return () => clearInterval(intervalo);
   }, []);
 

@@ -33,7 +33,6 @@ webpush.setVapidDetails(
 );
 
 
-
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, max: 10, message: { error: "Muitas tentativas. Tente novamente em 15 minutos." }
 });
@@ -377,7 +376,9 @@ app.post('/login', pinLimiter, async (req, res) => {
 
 app.get('/fila', async (req, res) => {
     try {
-        const { data } = await supabase.from('jogadores').select('id, nome, avatar_url, status, mesa_atual, dupla_id, preferencia, created_at, ultimo_jogo_at, partidas_hoje');
+        const { data } = await supabase.from('jogadores')
+  .select('id, nome, avatar_url, status, mesa_atual, dupla_id, preferencia, created_at, ultimo_jogo_at, partidas_hoje')
+  .in('status', ['espera', 'congelado', 'mesa']);
         if (!data) return res.json([]);
         
         const mesa1 = data.filter(j => j.status === 'mesa' && j.mesa_atual === 1);
@@ -670,7 +671,16 @@ app.post('/vitoria', (req, res) => {
     });
 
 });
+// Variável global para guardar o cache em memória
+let cacheEstatisticas = { data: null, ultimaAtualizacao: 0 };
+
 app.get('/estatisticas-gerais', async (req, res) => {
+    const agora = Date.now();
+    // Se o cache tem menos de 10 minutos (600000 milissegundos), devolve sem bater no Supabase
+    if (cacheEstatisticas.data && (agora - cacheEstatisticas.ultimaAtualizacao < 600000)) {
+        return res.json(cacheEstatisticas.data);
+    }
+
     try {
         const { data: jogadores } = await supabase.from('jogadores').select('id, nome, partidas_jogadas');
         const mapNomes = {}; let maisPartidas = { valor: 0, dono: "Ninguém" };
@@ -679,7 +689,9 @@ app.get('/estatisticas-gerais', async (req, res) => {
             if ((j.partidas_jogadas || 0) > maisPartidas.valor) { maisPartidas = { valor: j.partidas_jogadas, dono: j.nome }; }
         });
 
+        // Essa é a busca pesada. Com o cache, ela roda muito menos!
         const { data: historico } = await supabase.from('historico_partidas').select('vencedor1_id, vencedor2_id, perdedor1_id, perdedor2_id').order('data_partida', { ascending: true });
+        
         let duplaCounts = {}; let streaks = {};
 
         historico.forEach(p => {
@@ -729,10 +741,14 @@ app.get('/estatisticas-gerais', async (req, res) => {
             }
         });
 
-        res.json({ maiorSequencia, duplaImbativel, maisPartidas, maiorJejum });
+        const resultadoFinal = { maiorSequencia, duplaImbativel, maisPartidas, maiorJejum };
+        
+        // Salva o resultado na memória para os próximos 10 minutos
+        cacheEstatisticas = { data: resultadoFinal, ultimaAtualizacao: agora };
+        
+        res.json(resultadoFinal);
     } catch (error) { res.status(500).json({ error: "Erro ao calcular estatísticas gerais." }); }
 });
-
 // ==========================================
 // 🏆 ROTAS: RANKING E DETALHES
 // ==========================================
