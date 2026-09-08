@@ -24,7 +24,7 @@
     "@capacitor/haptics": "^8.0.2",
     "@capacitor/push-notifications": "^8.1.2",
     "@supabase-js/source": "github:supabase/supabase-js",
-    "@supabase/supabase-js": "^2.97.0",
+    "@supabase/supabase-js": "^2.116.0",
     "compression": "^1.8.1",
     "cors": "^2.8.6",
     "csv-parser": "^3.2.1",
