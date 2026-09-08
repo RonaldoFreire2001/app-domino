@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import { createClient } from '@supabase/supabase-js';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { Capacitor } from '@capacitor/core';
@@ -7,8 +8,12 @@ import { PushNotifications } from '@capacitor/push-notifications';
 import toast from 'react-hot-toast';
 import PullToRefresh from 'react-simple-pull-to-refresh';
 import '../App.css';
-const API_URL = 'https://app-domino.onrender.com';
 
+const API_URL = 'https://app-domino.onrender.com';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
 
 // ==========================================
 // COMPONENTE ONBOARDING DE REGRAS 
@@ -429,74 +434,19 @@ export default function TelaFila() {
   };
 
   const trocarFotoExistente = async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
+    const file = e.target.files[0];
+    if (!file) return;
+    toast.loading("Processando imagem...", { id: 'img-upload' });
+    comprimirImagem(file, 200, async (fotoLeve) => {
+      try {
+        await axios.post(`${API_URL}/atualizar-foto`, { nome: usuarioLogado.nome, pin: usuarioLogado.pin, foto: fotoLeve });
+        const userAtualizado = { ...usuarioLogado, avatar_url: fotoLeve };
+        setUsuarioLogado(userAtualizado); localStorage.setItem('@DominoPAF:user', JSON.stringify(userAtualizado));
+        carregarFilaETudo(); toast.success("Foto atualizada!", { id: 'img-upload' });
+      } catch (error) { toast.error("Erro de processamento de imagem.", { id: 'img-upload' }); }
+    });
+  };
 
-  toast.loading("Atualizando foto de perfil...", { id: 'img-upload' });
-
-  try {
-    // 1. Lê o arquivo nativamente
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-
-    reader.onload = async (event) => {
-      const img = new Image();
-      img.src = event.target.result;
-
-      img.onload = async () => {
-        // 2. Comprime a imagem com Canvas para não estourar o limite de 1MB do Firestore
-        const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 250; // Tamanho ideal para avatar
-        const scaleSize = MAX_WIDTH / img.width;
-        
-        canvas.width = MAX_WIDTH;
-        canvas.height = img.height * scaleSize;
-
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-        // 3. Transforma em Base64 compactado (Qualidade 0.7)
-        const fotoLeve = canvas.toDataURL('image/jpeg', 0.7);
-
-        try {
-          // 4. Envia para o Backend
-          await axios.post(`${API_URL}/atualizar-foto`, {
-            nome: usuarioLogado.nome,
-            pin: usuarioLogado.pin,
-            foto: fotoLeve
-          });
-
-          // 5. Atualiza o React e o LocalStorage
-          const userAtualizado = { ...usuarioLogado, avatar_url: fotoLeve };
-          setUsuarioLogado(userAtualizado);
-          localStorage.setItem('@DominoPAF:user', JSON.stringify(userAtualizado));
-
-          // Atualiza a fila se a função existir na tela
-          if (typeof carregarFilaETudo === 'function') {
-            carregarFilaETudo();
-          }
-          
-          toast.success("Foto atualizada com sucesso!", { id: 'img-upload' });
-        } catch (backendError) {
-          console.error("Erro no backend:", backendError);
-          toast.error("Erro ao salvar imagem no servidor.", { id: 'img-upload' });
-        }
-      };
-    };
-
-    reader.onerror = (error) => {
-      console.error("Erro ao ler arquivo:", error);
-      toast.error("Erro ao processar a imagem local.", { id: 'img-upload' });
-    };
-
-  } catch (error) {
-    console.error("Erro geral:", error);
-    toast.error("Erro ao atualizar foto.", { id: 'img-upload' });
-  } finally {
-    // 6. Limpa o input para não bugar caso o usuário escolha a mesma foto duas vezes
-    e.target.value = null;
-  }
-};
   const entrarNaFila = async () => {
     vibrarLeve();
     try {
